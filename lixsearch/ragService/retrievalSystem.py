@@ -5,7 +5,7 @@ from typing import Dict, List
 from ragService.embeddingService import EmbeddingService
 from ragService.vectorStore import VectorStore
 from ragService.ragEngine import RAGEngine
-from ragService.semanticCache import SemanticCache
+from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache
 from sessions.main import get_session_manager
 
 _retrieval_system = None
@@ -14,8 +14,10 @@ from pipeline.config import (
     EMBEDDING_MODEL,
     EMBEDDING_DIMENSION,
     EMBEDDINGS_DIR,
+    SEMANTIC_CACHE_DIR,
     SEMANTIC_CACHE_TTL_SECONDS,
-    SEMANTIC_CACHE_SIMILARITY_THRESHOLD
+    SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
+    REDIS_URL
 )
 
 
@@ -39,11 +41,30 @@ class RetrievalSystem:
         self.vector_store = VectorStore(embedding_dim=EMBEDDING_DIMENSION, embeddings_dir=EMBEDDINGS_DIR)
         logger.info(f"[RetrievalSystem] Vector store device: {self.vector_store.device}")
         
+        # Parse Redis URL for semantic cache initialization
+        redis_host = "localhost"
+        redis_port = 6379
+        redis_db = 0
+        if REDIS_URL:
+            # Parse format: redis://host:port/db
+            try:
+                url_parts = REDIS_URL.replace("redis://", "").split("/")
+                host_port = url_parts[0].split(":")
+                redis_host = host_port[0]
+                redis_port = int(host_port[1]) if len(host_port) > 1 else 6379
+                redis_db = int(url_parts[1]) if len(url_parts) > 1 else 0
+            except Exception as e:
+                logger.warning(f"[RetrievalSystem] Failed to parse REDIS_URL, using defaults: {e}")
+        
         self.semantic_cache = SemanticCache(
             ttl_seconds=SEMANTIC_CACHE_TTL_SECONDS,
-            similarity_threshold=SEMANTIC_CACHE_SIMILARITY_THRESHOLD
+            similarity_threshold=SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
+            cache_dir=SEMANTIC_CACHE_DIR,
+            redis_host=redis_host,
+            redis_port=redis_port,
+            redis_db=redis_db
         )
-        logger.info(f"[RetrievalSystem] Semantic cache: TTL={SEMANTIC_CACHE_TTL_SECONDS}s, threshold={SEMANTIC_CACHE_SIMILARITY_THRESHOLD}")
+        logger.info(f"[RetrievalSystem] Semantic cache: TTL={SEMANTIC_CACHE_TTL_SECONDS}s, threshold={SEMANTIC_CACHE_SIMILARITY_THRESHOLD}, redis={redis_host}:{redis_port}/{redis_db}")
         
         self.sessions_lock = threading.RLock()
         

@@ -1,6 +1,6 @@
 from datetime import datetime
 from loguru import logger 
-from ragService.semanticCache import SemanticCache
+from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache
 import random
 import requests
 import json
@@ -15,7 +15,8 @@ from pipeline.config import (POLLINATIONS_ENDPOINT,
                              CACHE_WINDOW_SIZE, CACHE_MAX_ENTRIES, CACHE_TTL_SECONDS, 
                              CACHE_SIMILARITY_THRESHOLD, CACHE_COMPRESSION_METHOD, 
                              CACHE_EMBEDDING_MODEL,
-                             SEMANTIC_CACHE_DIR, CONVERSATION_CACHE_DIR,
+                             SEMANTIC_CACHE_DIR, CONVERSATION_CACHE_DIR, SEMANTIC_CACHE_TTL_SECONDS,
+                             SEMANTIC_CACHE_SIMILARITY_THRESHOLD, REDIS_URL,
                              MIN_LINKS_TO_TAKE, MAX_LINKS_TO_TAKE, SEARCH_MAX_RESULTS)
 from pipeline.instruction import system_instruction, user_instruction, synthesis_instruction
 from pipeline.optimized_tool_execution import optimized_tool_execution
@@ -216,10 +217,31 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             if conversation_cache.load_from_disk(session_id=request_id):
                 logger.info(f"[Pipeline] Loaded conversation cache from disk (session: {request_id})")
         
-        semantic_cache = SemanticCache(ttl_seconds=300, cache_dir=SEMANTIC_CACHE_DIR)
+        # Parse Redis URL for semantic cache initialization
+        redis_host = "localhost"
+        redis_port = 6379
+        redis_db = 0
+        if REDIS_URL:
+            try:
+                url_parts = REDIS_URL.replace("redis://", "").split("/")
+                host_port = url_parts[0].split(":")
+                redis_host = host_port[0]
+                redis_port = int(host_port[1]) if len(host_port) > 1 else 6379
+                redis_db = int(url_parts[1]) if len(url_parts) > 1 else 0
+            except Exception as e:
+                logger.warning(f"[Pipeline] Failed to parse REDIS_URL, using defaults: {e}")
+        
+        semantic_cache = SemanticCache(
+            ttl_seconds=SEMANTIC_CACHE_TTL_SECONDS, 
+            similarity_threshold=SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
+            cache_dir=SEMANTIC_CACHE_DIR,
+            redis_host=redis_host,
+            redis_port=redis_port,
+            redis_db=redis_db
+        )
         if request_id:
             semantic_cache.load_for_request(request_id)
-            logger.info(f"[Pipeline] Loaded persistent cache for request {request_id}")
+            logger.info(f"[Pipeline] Loaded persistent Redis cache for request {request_id}")
         
         image_context_provided = False
         if image_only_mode:

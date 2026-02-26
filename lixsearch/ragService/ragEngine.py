@@ -2,7 +2,7 @@ from ragService.embeddingService import EmbeddingService
 from ragService.retrievalPipeline import RetrievalPipeline
 from ragService.vectorStore import VectorStore
 from sessions.sessionData import SessionData
-from ragService.semanticCache import SemanticCache
+from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache
 import numpy as np
 from loguru import logger
 from typing import Dict, Optional
