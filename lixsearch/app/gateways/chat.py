@@ -10,14 +10,6 @@ logger = logging.getLogger("lixsearch-api")
 
 
 async def chat(pipeline_initialized: bool):
-    """
-    Chat endpoint - Creates or reuses session.
-    
-    POST: /api/chat with JSON body {session_id, message, search, image_url}
-    
-    If session_id is provided: uses existing session
-    If session_id is not provided: creates new session from first message
-    """
     if not pipeline_initialized:
         return jsonify({"error": "Server not initialized"}), 503
 
@@ -31,7 +23,6 @@ async def chat(pipeline_initialized: bool):
         if not user_message:
             return jsonify({"error": "Message is required"}), 400
 
-        # Create session if not provided (for backwards compatibility)
         if not session_id:
             session_manager = get_session_manager()
             session_id = session_manager.create_session(user_message)
@@ -71,14 +62,6 @@ async def chat(pipeline_initialized: bool):
 
 
 async def session_chat(session_id: str, pipeline_initialized: bool):
-    """
-    Chat endpoint with session in route - REQUIRES existing session.
-    
-    POST: /api/session/{session_id}/chat with JSON body {message, search, image_url}
-    
-    Args:
-        session_id: REQUIRED - Unique session identifier (from route)
-    """
     if not pipeline_initialized:
         return jsonify({"error": "Server not initialized"}), 503
 

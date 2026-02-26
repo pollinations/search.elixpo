@@ -36,25 +36,10 @@ def format_sse_event_openai(event_type: str, content: str, request_id: str = Non
 
 
 async def search(pipeline_initialized: bool):
-    """
-    Search endpoint - REQUIRES sessionID for cache isolation.
-    
-    GET: /api/search?session_id=YOUR_SESSION_ID&query=YOUR_QUERY&stream=true
-    POST: /api/search with JSON body {session_id, query, image_url, stream}
-    
-    Args (required):
-        session_id: MANDATORY - Unique session identifier for cache isolation
-        query: Search query
-    
-    Args (optional):
-        image_url or image: URL to search based on image
-        stream: true/false for streaming response (default: true)
-    """
     if not pipeline_initialized:
         return jsonify({"error": "Server not initialized"}), 503
 
     try:
-        # Extract parameters from GET or POST
         if request.method == 'GET':
             session_id = request.args.get("session_id", "").strip()
             query = request.args.get("query", "").strip()
@@ -67,25 +52,20 @@ async def search(pipeline_initialized: bool):
             image_url = data.get("image_url") or data.get("image")
             stream_param = str(data.get("stream", "true")).lower()
 
-        # MANDATORY: Validate sessionID presence
         if not session_id:
             logger.warning(f"[search] Missing mandatory 'session_id' parameter")
             return jsonify({"error": "Missing mandatory parameter: session_id"}), 400
         
-        # Validate query
         if not validate_query(query):
             logger.warning(f"[{session_id}] Invalid query: {query[:50]}")
             return jsonify({"error": "Invalid or missing query"}), 400
 
-        # Validate image URL if provided
         if image_url and not validate_url(image_url):
             logger.warning(f"[{session_id}] Invalid image_url: {image_url}")
             return jsonify({"error": "Invalid image_url"}), 400
 
-        # Parse stream parameter (default True)
         stream_mode = stream_param not in ("false", "0", "no")
         
-        # Extract or generate request ID
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4())[:X_REQ_ID_SLICE_SIZE])
 
         logger.info(
@@ -93,17 +73,15 @@ async def search(pipeline_initialized: bool):
             f"stream={stream_mode} image={bool(image_url)}"
         )
 
-        # Streaming mode: SSE with OpenAI-format JSON events
         if stream_mode:
             async def event_stream_generator():
                 async for chunk in run_elixposearch_pipeline(
                     user_query=query,
                     user_image=image_url,
-                    event_id=request_id,  # Enable SSE format from pipeline
+                    event_id=request_id,
                     request_id=request_id,
-                    session_id=session_id  # Pass sessionID to pipeline
+                    session_id=session_id
                 ):
-                    # Parse SSE event: "event: TYPE\ndata: CONTENT\n\n"
                     chunk_str = chunk if isinstance(chunk, str) else chunk.decode('utf-8')
                     
                     try:
@@ -119,11 +97,9 @@ async def search(pipeline_initialized: bool):
                         
                         event_data = "\n".join(event_data_lines) if event_data_lines else None
                         if event_type and event_data:
-                            # Reformat as OpenAI-compatible SSE JSON
                             openai_sse = format_sse_event_openai(event_type, event_data, request_id)
                             yield openai_sse.encode('utf-8')
                         else:
-                            # Fallback: pass through as-is if parsing fails
                             yield chunk_str.encode('utf-8') if isinstance(chunk, str) else chunk
                     except Exception as e:
                         logger.warning(f"[{request_id}] session={session_id} Failed to parse SSE: {e}")
@@ -139,16 +115,14 @@ async def search(pipeline_initialized: bool):
                     'Access-Control-Allow-Origin': '*'
                 }
             )
-        
-        # Non-streaming mode: Single JSON response
         else:
             response_content = None
             async for chunk in run_elixposearch_pipeline(
                 user_query=query,
                 user_image=image_url,
-                event_id=None,  # Disable SSE format, yield raw content
+                event_id=None,
                 request_id=request_id,
-                session_id=session_id  # Pass sessionID to pipeline
+                session_id=session_id
             ):
                 response_content = chunk
 
