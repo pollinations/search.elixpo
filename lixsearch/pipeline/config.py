@@ -93,10 +93,47 @@ SEMANTIC_CACHE_CLEANUP_INTERVAL = 300
 CONNECTION_POOL_SIZE = 20
 CONNECTION_POOL_TIMEOUT = 10.0
 CONNECTION_POOL_ENABLE = True
-REDIS_ENABLED = False
+# ========================================================================
+# SEMANTIC CACHE REDIS CONFIGURATION (Master Settings)
+# ========================================================================
+REDIS_ENABLED = True
+REDIS_HOST = "localhost"
+REDIS_PORT = 6379
 REDIS_URL = "redis://localhost:6379/0"
-REDIS_CACHE_TTL = 3600
+REDIS_SOCKET_CONNECT_TIMEOUT = 5
+REDIS_SOCKET_KEEPALIVE = True
 REDIS_KEY_PREFIX = "elixpo"
+
+# ---- Semantic Queries Cache (per sessionID + URL) ----
+SEMANTIC_CACHE_REDIS_HOST = REDIS_HOST
+SEMANTIC_CACHE_REDIS_PORT = REDIS_PORT
+SEMANTIC_CACHE_REDIS_DB = 0  # Semantic cache queries
+SEMANTIC_CACHE_REDIS_TTL_SECONDS = 300  # 5 minutes - Recent semantic queries
+SEMANTIC_CACHE_REDIS_SIMILARITY_THRESHOLD = 0.90  # 90% similarity for cache hits
+SEMANTIC_CACHE_REDIS_MAX_ITEMS_PER_URL = 50  # Max cached queries per URL per session
+
+# ---- URL Embeddings Cache (long-lived, across sessions) ----
+URL_EMBEDDING_CACHE_REDIS_DB = 1  # Persistent URL embeddings
+URL_EMBEDDING_CACHE_TTL_SECONDS = 86400  # 24 hours
+URL_EMBEDDING_CACHE_BATCH_SIZE = 100  # Process embeddings in batches
+
+# ---- Session Context Window (per sessionID) ----
+SESSION_CONTEXT_WINDOW_REDIS_DB = 2  # Session conversation history
+SESSION_CONTEXT_WINDOW_TTL_SECONDS = 1800  # 30 minutes
+SESSION_CONTEXT_WINDOW_SIZE = 20  # Messages to keep in memory (scalable to 100+)
+SESSION_CONTEXT_WINDOW_MAX_TOKENS = None  # Optional token limit per session
+
+# ---- Cache Scaling Parameters (for 20+ concurrent sessions) ----
+SEMANTIC_CACHE_REDIS_POOL_SIZE = 50  # Connection pool for concurrent sessions
+SEMANTIC_CACHE_REDIS_MAX_SESSIONS = 1000  # Max concurrent sessions with cache
+SEMANTIC_CACHE_REDIS_CONNECTION_TIMEOUT = 10  # Seconds to wait for connection
+SEMANTIC_CACHE_REDIS_COMPRESSION_ENABLED = False  # Disable for speed, enable if OOM
+
+# ---- Cache Cleanup & Monitoring ----
+SEMANTIC_CACHE_REDIS_CLEANUP_INTERVAL = 300  # 5 minutes - Stale entry cleanup
+SEMANTIC_CACHE_REDIS_STATS_INTERVAL = 60  # 1 minute - Collect usage stats
+SEMANTIC_CACHE_REDIS_ENABLE_MONITORING = True  # Track hit ratios, memory usage
+
 IPC_HOST = "localhost"
 IPC_PORT = 5010
 IPC_AUTHKEY = b"ipcService"

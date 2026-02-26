@@ -36,32 +36,62 @@ def format_sse_event_openai(event_type: str, content: str, request_id: str = Non
 
 
 async def search(pipeline_initialized: bool):
+    """
+    Search endpoint - REQUIRES sessionID for cache isolation.
+    
+    GET: /api/search?session_id=YOUR_SESSION_ID&query=YOUR_QUERY&stream=true
+    POST: /api/search with JSON body {session_id, query, image_url, stream}
+    
+    Args (required):
+        session_id: MANDATORY - Unique session identifier for cache isolation
+        query: Search query
+    
+    Args (optional):
+        image_url or image: URL to search based on image
+        stream: true/false for streaming response (default: true)
+    """
     if not pipeline_initialized:
         return jsonify({"error": "Server not initialized"}), 503
 
     try:
+        # Extract parameters from GET or POST
         if request.method == 'GET':
+            session_id = request.args.get("session_id", "").strip()
             query = request.args.get("query", "").strip()
             image_url = request.args.get("image_url") or request.args.get("image")
             stream_param = request.args.get("stream", "true").lower()
         else:
             data = await request.get_json()
+            session_id = data.get("session_id", "").strip()
             query = data.get("query", "").strip()
             image_url = data.get("image_url") or data.get("image")
             stream_param = str(data.get("stream", "true")).lower()
 
-        # Parse stream parameter (default True)
-        stream_mode = stream_param not in ("false", "0", "no")
-
+        # MANDATORY: Validate sessionID presence
+        if not session_id:
+            logger.warning(f"[search] Missing mandatory 'session_id' parameter")
+            return jsonify({"error": "Missing mandatory parameter: session_id"}), 400
+        
+        # Validate query
         if not validate_query(query):
+            logger.warning(f"[{session_id}] Invalid query: {query[:50]}")
             return jsonify({"error": "Invalid or missing query"}), 400
 
+        # Validate image URL if provided
         if image_url and not validate_url(image_url):
+            logger.warning(f"[{session_id}] Invalid image_url: {image_url}")
             return jsonify({"error": "Invalid image_url"}), 400
 
+        # Parse stream parameter (default True)
+        stream_mode = stream_param not in ("false", "0", "no")
+        
+        # Extract or generate request ID
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4())[:X_REQ_ID_SLICE_SIZE])
 
-        logger.info(f"[{request_id}] Search: {query[:LOG_MESSAGE_QUERY_TRUNCATE]}... [stream={stream_mode}]")
+        logger.info(
+            f"[{request_id}] search session={session_id} query={query[:LOG_MESSAGE_QUERY_TRUNCATE]}... "
+            f"stream={stream_mode} image={bool(image_url)}"
+        )
 
         # Streaming mode: SSE with OpenAI-format JSON events
         if stream_mode:
@@ -70,7 +100,8 @@ async def search(pipeline_initialized: bool):
                     user_query=query,
                     user_image=image_url,
                     event_id=request_id,  # Enable SSE format from pipeline
-                    request_id=request_id
+                    request_id=request_id,
+                    session_id=session_id  # Pass sessionID to pipeline
                 ):
                     # Parse SSE event: "event: TYPE\ndata: CONTENT\n\n"
                     chunk_str = chunk if isinstance(chunk, str) else chunk.decode('utf-8')
@@ -95,7 +126,7 @@ async def search(pipeline_initialized: bool):
                             # Fallback: pass through as-is if parsing fails
                             yield chunk_str.encode('utf-8') if isinstance(chunk, str) else chunk
                     except Exception as e:
-                        logger.warning(f"[{request_id}] Failed to parse SSE event: {e}, passing through")
+                        logger.warning(f"[{request_id}] session={session_id} Failed to parse SSE: {e}")
                         yield chunk_str.encode('utf-8') if isinstance(chunk, str) else chunk
 
             return Response(
@@ -116,11 +147,13 @@ async def search(pipeline_initialized: bool):
                 user_query=query,
                 user_image=image_url,
                 event_id=None,  # Disable SSE format, yield raw content
-                request_id=request_id
+                request_id=request_id,
+                session_id=session_id  # Pass sessionID to pipeline
             ):
                 response_content = chunk
 
             if not response_content:
+                logger.error(f"[{request_id}] session={session_id} No response generated")
                 return jsonify({"error": "No response generated"}), 500
 
             openai_response = format_openai_response(response_content, request_id)
@@ -136,6 +169,15 @@ async def search(pipeline_initialized: bool):
             )
 
     except Exception as e:
+        session_id = ""
+        try:
+            if request.method == 'GET':
+                session_id = request.args.get("session_id", "")
+            else:
+                data = await request.get_json()
+                session_id = data.get("session_id", "")
+        except:
+            pass
+        
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4())[:X_REQ_ID_SLICE_SIZE])
-        logger.error(f"[{request_id}] Search error: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"[{request_id}] session={session_id} Search error: {e}", exc_info=True)
