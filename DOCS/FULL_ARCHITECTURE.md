@@ -404,13 +404,13 @@ graph TD
 
 ```mermaid
 graph TD
-    Start[\"run_elixposearch_pipeline<br/>query, image, event_id\"]
-    Decompose[\"_decompose_query<br/>Break into sub-queries\"]
-    ToolExec[\"optimized_tool_execution<br/>Parallel execution\"]
-    RAGContext[\"_get_rag_context<br/>Retrieve cached evidence\"]
-    Synthesis[\"LLM synthesis<br/>Generate response\"]
-    SSEStream[\"SSE streaming<br/>Yield formatted events\"]
-    End[\"Return AsyncGenerator<br/>Event chunks\"]
+    Start["run_elixposearch_pipeline<br/>query, image, event_id"]
+    Decompose["_decompose_query<br/>Break into sub-queries"]
+    ToolExec["optimized_tool_execution<br/>Parallel execution"]
+    RAGContext["_get_rag_context<br/>Retrieve cached evidence"]
+    Synthesis["LLM synthesis<br/>Generate response"]
+    SSEStream["SSE streaming<br/>Yield formatted events"]
+    End["Return AsyncGenerator<br/>Event chunks"]
     
     Start --> Decompose
     Decompose --> ToolExec
@@ -428,15 +428,15 @@ graph TD
 
 ```mermaid
 graph TD
-    Start[\"run_elixposearch_pipeline<br/>entry point\"]
-    Validate[\"1. Validate query<br/>& image_url\"]
-    CreateSess[\"2. Create session<br/>Track request_id\"]
-    ToolExec[\"3. Execute tools<br/>in parallel\"]
-    Aggregate[\"4. Aggregate results<br/>Deduplicate URLs\"]
-    RAGRetrieve[\"5. Retrieve RAG<br/>context\"]
-    LLMCall[\"6. Call LLM<br/>with context\"]
-    Stream[\"7. Stream response<br/>chunks as SSE\"]
-    End[\"Return event stream<br/>to gateway\"]
+    Start["run_elixposearch_pipeline<br/>entry point"]
+    Validate["1. Validate query<br/>& image_url"]
+    CreateSess["2. Create session<br/>Track request_id"]
+    ToolExec["3. Execute tools<br/>in parallel"]
+    Aggregate["4. Aggregate results<br/>Deduplicate URLs"]
+    RAGRetrieve["5. Retrieve RAG<br/>context"]
+    LLMCall["6. Call LLM<br/>with context"]
+    Stream["7. Stream response<br/>chunks as SSE"]
+    End["Return event stream<br/>to gateway"]
     
     Start --> Validate
     Validate --> CreateSess
@@ -457,22 +457,22 @@ graph TD
 
 ```mermaid
 graph TD
-    Start[\"optimized_tool_execution<br/>search_tools list\"]
+    Start["optimized_tool_execution<br/>search_tools list"]
     
-    WebSearch[\"Web Search<br/>Playwright\"]
-    YouTubeFetch[\"YouTube Metadata<br/>API Call\"]
-    ImageAnalysis[\"Image Analysis<br/>Vision Model\"]
-    Functions[\"Function Calls<br/>getTimeZone, generateImage\"]
+    WebSearch["Web Search<br/>Playwright"]
+    YouTubeFetch["YouTube Metadata<br/>API Call"]
+    ImageAnalysis["Image Analysis<br/>Vision Model"]
+    Functions["Function Calls<br/>getTimeZone, generateImage"]
     
-    Async1[\"Async<br/>Task 1\"]
-    Async2[\"Async<br/>Task 2\"]
-    Async3[\"Async<br/>Task 3\"]
-    Async4[\"Async<br/>Task 4\"]
+    Async1["Async<br/>Task 1"]
+    Async2["Async<br/>Task 2"]
+    Async3["Async<br/>Task 3"]
+    Async4["Async<br/>Task 4"]
     
-    Gather[\"Gather all results<br/>asyncio.gather\"]
-    Aggregate[\"Aggregate results<br/>De-duplicate\"]
-    Format[\"Format output<br/>Structured data\"]
-    End[\"Return aggregated<br/>results to pipeline\"]
+    Gather["Gather all results<br/>asyncio.gather"]
+    Aggregate["Aggregate results<br/>De-duplicate"]
+    Format["Format output<br/>Structured data"]
+    End["Return aggregated<br/>results to pipeline"]
     
     Start --> WebSearch
     Start --> YouTubeFetch
