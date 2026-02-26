@@ -1,8 +1,9 @@
 from loguru import logger 
 from ragService.embeddingService import EmbeddingService
 from ragService.vectorStore import VectorStore
-from ragService.semanticCache import SemanticCache
+from ragService.semanticCacheRedis import SemanticCacheRedis
 import uuid
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pipeline.config import EMBEDDING_MODEL, EMBEDDINGS_DIR, SEMANTIC_CACHE_TTL_SECONDS, SEMANTIC_CACHE_SIMILARITY_THRESHOLD, AUDIO_TRANSCRIBE_SIZE, RETRIEVAL_TOP_K, PERSIST_VECTOR_STORE_INTERVAL, REQUEST_ID_HEX_SLICE_SIZE
 from ragService.retrievalPipeline import RetrievalPipeline
@@ -18,14 +19,18 @@ class CoreEmbeddingService:
         CoreEmbeddingService._instance_id = str(uuid.uuid4())[:REQUEST_ID_HEX_SLICE_SIZE]
         logger.info(f"[CORE {CoreEmbeddingService._instance_id}] Initializing core services...")
         
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = self._select_device()
         logger.info(f"[CORE {CoreEmbeddingService._instance_id}] Using device: {self.device}")
         
         self.embedding_service = EmbeddingService(model_name=EMBEDDING_MODEL)
         self.vector_store = VectorStore(embeddings_dir=EMBEDDINGS_DIR)
-        self.semantic_cache = SemanticCache(
+        self.semantic_cache = SemanticCacheRedis(
             ttl_seconds=SEMANTIC_CACHE_TTL_SECONDS,
-            similarity_threshold=SEMANTIC_CACHE_SIMILARITY_THRESHOLD
+            similarity_threshold=SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
+            cache_dir="./cache",
+            redis_host=os.getenv("REDIS_HOST", "localhost"),
+            redis_port=int(os.getenv("REDIS_PORT", "6379")),
+            redis_db=int(os.getenv("REDIS_DB", "0"))
         )
         self.retrieval_pipeline = RetrievalPipeline(
             self.embedding_service,
@@ -45,6 +50,29 @@ class CoreEmbeddingService:
         self._warmup_embedding_model()
         
         logger.info(f"[CORE {CoreEmbeddingService._instance_id}] Core services initialized")
+    
+    @staticmethod
+    def _select_device() -> str:
+        """Select the best available device with fallback to CPU."""
+        try:
+            if torch.cuda.is_available():
+                device_count = torch.cuda.device_count()
+                device_name = torch.cuda.get_device_name(0)
+                logger.info(f"[CORE] CUDA available: {device_count} device(s), using '{device_name}'")
+                return "cuda"
+        except Exception as e:
+            logger.warning(f"[CORE] CUDA availability check failed: {e}")
+        
+        try:
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                logger.info(f"[CORE] Apple MPS available")
+                return "mps"
+        except Exception as e:
+            logger.debug(f"[CORE] MPS check failed: {e}")
+        
+        logger.info("[CORE] Using CPU for core services")
+        return "cpu"
+      
       
     def _warmup_embedding_model(self) -> None:
         try:

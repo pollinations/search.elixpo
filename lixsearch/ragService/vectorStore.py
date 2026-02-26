@@ -39,7 +39,7 @@ class VectorStore:
             embedding_dim = EMBEDDING_DIMENSION
         self.embedding_dim = embedding_dim
         self.embeddings_dir = embeddings_dir
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = self._select_device()
         
         self.client = None
         self.collection = None
@@ -52,6 +52,31 @@ class VectorStore:
         
         self._initialized = True
         logger.info(f"[VectorStore] Initialized with {self.chunk_count} chunks on {self.device}")
+    
+    @staticmethod
+    def _select_device() -> str:
+        """
+        Select the best available device for vector operations.
+        Tries CUDA first, then falls back to CPU with proper error handling.
+        """
+        try:
+            if torch.cuda.is_available():
+                device_count = torch.cuda.device_count()
+                device_name = torch.cuda.get_device_name(0)
+                logger.info(f"[VectorStore] CUDA available: {device_count} device(s), using '{device_name}'")
+                return "cuda"
+        except Exception as e:
+            logger.warning(f"[VectorStore] CUDA availability check failed: {e}")
+        
+        try:
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                logger.info(f"[VectorStore] Apple MPS available")
+                return "mps"
+        except Exception as e:
+            logger.debug(f"[VectorStore] MPS check failed: {e}")
+        
+        logger.info("[VectorStore] Using CPU for vector operations")
+        return "cpu"
     
     def _initialize_chroma_client(self) -> None:
         try:
