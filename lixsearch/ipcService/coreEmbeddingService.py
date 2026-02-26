@@ -3,9 +3,20 @@ from ragService.embeddingService import EmbeddingService
 from ragService.vectorStore import VectorStore
 from ragService.semanticCacheRedis import SemanticCacheRedis
 import uuid
-import os
 from concurrent.futures import ThreadPoolExecutor
-from pipeline.config import EMBEDDING_MODEL, EMBEDDINGS_DIR, SEMANTIC_CACHE_TTL_SECONDS, SEMANTIC_CACHE_SIMILARITY_THRESHOLD, AUDIO_TRANSCRIBE_SIZE, RETRIEVAL_TOP_K, PERSIST_VECTOR_STORE_INTERVAL, REQUEST_ID_HEX_SLICE_SIZE
+from pipeline.config import (
+    EMBEDDING_MODEL,
+    EMBEDDINGS_DIR,
+    SEMANTIC_CACHE_TTL_SECONDS,
+    SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
+    SEMANTIC_CACHE_REDIS_HOST,
+    SEMANTIC_CACHE_REDIS_PORT,
+    SEMANTIC_CACHE_REDIS_DB,
+    AUDIO_TRANSCRIBE_SIZE,
+    RETRIEVAL_TOP_K,
+    PERSIST_VECTOR_STORE_INTERVAL,
+    REQUEST_ID_HEX_SLICE_SIZE
+)
 from ragService.retrievalPipeline import RetrievalPipeline
 import torch
 import threading
@@ -25,12 +36,12 @@ class CoreEmbeddingService:
         self.embedding_service = EmbeddingService(model_name=EMBEDDING_MODEL)
         self.vector_store = VectorStore(embeddings_dir=EMBEDDINGS_DIR)
         self.semantic_cache = SemanticCacheRedis(
+            session_id="ipc-service",
             ttl_seconds=SEMANTIC_CACHE_TTL_SECONDS,
             similarity_threshold=SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
-            cache_dir="./cache",
-            redis_host=os.getenv("REDIS_HOST", "localhost"),
-            redis_port=int(os.getenv("REDIS_PORT", "6379")),
-            redis_db=int(os.getenv("REDIS_DB", "0"))
+            redis_host=SEMANTIC_CACHE_REDIS_HOST,
+            redis_port=SEMANTIC_CACHE_REDIS_PORT,
+            redis_db=SEMANTIC_CACHE_REDIS_DB
         )
         self.retrieval_pipeline = RetrievalPipeline(
             self.embedding_service,
