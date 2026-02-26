@@ -4,109 +4,16 @@ import time
 from typing import Dict, Optional, List, Tuple, Any
 from loguru import logger
 import numpy as np
-import json
 import pickle
-from pathlib import Path
-from datetime import datetime, timedelta
-import os
+from datetime import datetime
 
 try:
     import redis
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
-    logger.warning("[SemanticCacheRedis] Redis not available, will use fallback file-based cache")
-
-
-class SemanticQueryCache:
-    """Thread-safe in-memory query cache for semantic search results."""
+    logger.error("[SemanticCacheRedis] Redis not available - Redis is REQUIRED for optimized caching")
     
-    def __init__(self, ttl_seconds: int = 3600, max_size: int = 1000, similarity_threshold: float = 0.98):
-        self.ttl_seconds = ttl_seconds
-        self.max_size = max_size
-        self.similarity_threshold = similarity_threshold
-        
-        self.query_cache: Dict[str, Tuple[Any, float, int]] = {}
-        self.access_order: List[str] = []
-        self.lock = threading.RLock()
-        
-        logger.info(f"[SemanticQueryCache] Initialized: ttl={ttl_seconds}s, max_size={max_size}, threshold={similarity_threshold}")
-    
-    def _make_key(self, embedding_hash: str, top_k: int) -> str:
-        return f"{embedding_hash}:{top_k}"
-    
-    def _hash_embedding(self, embedding: np.ndarray) -> str:
-        if isinstance(embedding, list):
-            embedding = np.array(embedding)
-        
-        rounded = np.round(embedding, decimals=5)
-        hash_input = hashlib.sha256(rounded.tobytes()).hexdigest()
-        return hash_input[:16]
-    
-    def get(self, embedding: np.ndarray, top_k: int = 5) -> Optional[List[Dict]]:
-        with self.lock:
-            embedding_hash = self._hash_embedding(embedding)
-            key = self._make_key(embedding_hash, top_k)
-            
-            if key not in self.query_cache:
-                return None
-            
-            results, timestamp, access_count = self.query_cache[key]
-            
-            if time.time() - timestamp > self.ttl_seconds:
-                del self.query_cache[key]
-                if key in self.access_order:
-                    self.access_order.remove(key)
-                logger.debug(f"[SemanticQueryCache] Expired: {key}")
-                return None
-            
-            self.query_cache[key] = (results, timestamp, access_count + 1)
-            if key in self.access_order:
-                self.access_order.remove(key)
-            self.access_order.append(key)
-            
-            logger.debug(f"[SemanticQueryCache] Hit: {key} (access #{access_count + 1})")
-            return results
-    
-    def set(self, embedding: np.ndarray, top_k: int, results: List[Dict]) -> None:
-        with self.lock:
-            embedding_hash = self._hash_embedding(embedding)
-            key = self._make_key(embedding_hash, top_k)
-            
-            if len(self.query_cache) >= self.max_size and key not in self.query_cache:
-                if self.access_order:
-                    oldest_key = self.access_order.pop(0)
-                    del self.query_cache[oldest_key]
-                    logger.debug(f"[SemanticQueryCache] Evicted: {oldest_key}")
-            
-            self.query_cache[key] = (results, time.time(), 0)
-            if key in self.access_order:
-                self.access_order.remove(key)
-            self.access_order.append(key)
-            
-            logger.debug(f"[SemanticQueryCache] Stored: {key}")
-    
-    def clear(self) -> None:
-        with self.lock:
-            self.query_cache.clear()
-            self.access_order.clear()
-            logger.info("[SemanticQueryCache] Cleared all entries")
-    
-    def cleanup_expired(self) -> None:
-        with self.lock:
-            current_time = time.time()
-            expired_keys = [
-                key for key, (_, timestamp, _) in self.query_cache.items()
-                if current_time - timestamp > self.ttl_seconds
-            ]
-            
-            for key in expired_keys:
-                del self.query_cache[key]
-                if key in self.access_order:
-                    self.access_order.remove(key)
-            
-            if expired_keys:
-                logger.debug(f"[SemanticQueryCache] Cleaned {len(expired_keys)} expired entries")
     
     def stats(self) -> Dict[str, Any]:
         with self.lock:
@@ -118,345 +25,414 @@ class SemanticQueryCache:
             }
 
 
+class URLEmbeddingCache:
+    """
+    Redis-based cache for URL embeddings. 
+    Stores a single embedding per URL for fast reuse across queries.
+    """
+    
+    def __init__(
+        self,
+        ttl_seconds: int = 86400,  # 24 hours
+        redis_host: str = "localhost",
+        redis_port: int = 6379,
+        redis_db: int = 1
+    ):
+        self.ttl_seconds = ttl_seconds
+        self.redis_client = None
+        self.lock = threading.RLock()
+        
+        if not REDIS_AVAILABLE:
+            raise RuntimeError("[URLEmbeddingCache] Redis is required but not installed")
+        
+        try:
+            self.redis_client = redis.Redis(
+                host=redis_host,
+                port=redis_port,
+                db=redis_db,
+                decode_responses=False,
+                socket_connect_timeout=5,
+                socket_keepalive=True
+            )
+            self.redis_client.ping()
+            logger.info(f"[URLEmbeddingCache] Connected to Redis @ {redis_host}:{redis_port} (db={redis_db})")
+        except Exception as e:
+            logger.error(f"[URLEmbeddingCache] Failed to connect to Redis: {e}")
+            raise
+    
+    def get(self, url: str) -> Optional[np.ndarray]:
+        """Get cached embedding for URL."""
+        with self.lock:
+            try:
+                key = f"url_embedding:{url}"
+                cached = self.redis_client.get(key)
+                if cached:
+                    embedding = np.frombuffer(cached, dtype=np.float32)
+                    logger.debug(f"[URLEmbeddingCache] HIT: {url}")
+                    return embedding
+                return None
+            except Exception as e:
+                logger.warning(f"[URLEmbeddingCache] Get error for {url}: {e}")
+                return None
+    
+    def set(self, url: str, embedding: np.ndarray) -> bool:
+        """Cache embedding for URL."""
+        with self.lock:
+            try:
+                key = f"url_embedding:{url}"
+                if isinstance(embedding, np.ndarray):
+                    embedding_bytes = embedding.astype(np.float32).tobytes()
+                else:
+                    embedding = np.array(embedding, dtype=np.float32)
+                    embedding_bytes = embedding.tobytes()
+                
+                self.redis_client.setex(key, self.ttl_seconds, embedding_bytes)
+                logger.debug(f"[URLEmbeddingCache] STORED: {url}")
+                return True
+            except Exception as e:
+                logger.warning(f"[URLEmbeddingCache] Set error for {url}: {e}")
+                return False
+    
+    def get_stats(self) -> Dict:
+        """Get cache statistics."""
+        try:
+            info = self.redis_client.info("memory")
+            return {
+                "backend": "redis",
+                "redis_memory_used": info.get("used_memory_human", "unknown"),
+                "ttl_seconds": self.ttl_seconds
+            }
+        except Exception as e:
+            logger.warning(f"[URLEmbeddingCache] Failed to get stats: {e}")
+            return {"backend": "redis", "status": "error"}
+
+
+class SessionContextWindow:
+    """
+    Redis-based session context window manager.
+    Maintains a sliding window of conversation messages with LRU eviction.
+    
+    Config:
+    - window_size: Max number of messages to keep in context (default: 20)
+    - ttl_seconds: Message expiration time (default: 3600 seconds / 1 hour)
+    - max_tokens: Optional max token limit for context (for future use)
+    """
+    
+    def __init__(
+        self,
+        session_id: str,
+        window_size: int = 20,
+        ttl_seconds: int = 3600,
+        max_tokens: Optional[int] = None,
+        redis_host: str = "localhost",
+        redis_port: int = 6379,
+        redis_db: int = 2
+    ):
+        self.session_id = session_id
+        self.window_size = window_size
+        self.ttl_seconds = ttl_seconds
+        self.max_tokens = max_tokens
+        self.redis_client = None
+        self.lock = threading.RLock()
+        
+        if not REDIS_AVAILABLE:
+            raise RuntimeError("[SessionContextWindow] Redis is required but not installed")
+        
+        try:
+            self.redis_client = redis.Redis(
+                host=redis_host,
+                port=redis_port,
+                db=redis_db,
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_keepalive=True
+            )
+            self.redis_client.ping()
+            logger.info(
+                f"[SessionContextWindow] Initialized for session {session_id}: "
+                f"window_size={window_size}, ttl={ttl_seconds}s"
+            )
+        except Exception as e:
+            logger.error(f"[SessionContextWindow] Failed to connect to Redis: {e}")
+            raise
+    
+    def _get_key(self) -> str:
+        """Get Redis key for this session's message window."""
+        return f"session_context:{self.session_id}"
+    
+    def _get_order_key(self) -> str:
+        """Get Redis key for message insertion order (for LRU)."""
+        return f"session_order:{self.session_id}"
+    
+    def add_message(self, role: str, content: str, metadata: Optional[Dict] = None) -> int:
+        """
+        Add a message to the context window.
+        Returns the current window size.
+        """
+        with self.lock:
+            try:
+                key = self._get_key()
+                order_key = self._get_order_key()
+                timestamp = time.time()
+                
+                msg_id = int(timestamp * 1000) % (2**31)  # Simple ID based on timestamp
+                message = {
+                    "role": role,
+                    "content": content,
+                    "timestamp": timestamp,
+                    "metadata": metadata or {}
+                }
+                
+                # Store message with TTL
+                msg_key = f"{key}:{msg_id}"
+                self.redis_client.setex(
+                    msg_key,
+                    self.ttl_seconds,
+                    pickle.dumps(message)
+                )
+                
+                # Add to order tracking list (for LRU)
+                self.redis_client.lpush(order_key, msg_id)
+                self.redis_client.expire(order_key, self.ttl_seconds)
+                
+                # Enforce window size - LRU eviction
+                window_len = self.redis_client.llen(order_key)
+                if window_len > self.window_size:
+                    # Remove oldest messages (from right end of list)
+                    excess = window_len - self.window_size
+                    for _ in range(excess):
+                        old_id = self.redis_client.rpop(order_key)
+                        if old_id:
+                            self.redis_client.delete(f"{key}:{old_id}")
+                            logger.debug(f"[SessionContextWindow] LRU evicted message {old_id}")
+                
+                logger.debug(f"[SessionContextWindow] Added message {role} (window: {min(window_len, self.window_size)})")
+                return min(window_len, self.window_size)
+                
+            except Exception as e:
+                logger.warning(f"[SessionContextWindow] Failed to add message: {e}")
+                return 0
+    
+    def get_context(self) -> List[Dict]:
+        """
+        Get all messages in the current context window.
+        Returns messages in chronological order (oldest first).
+        """
+        with self.lock:
+            try:
+                key = self._get_key()
+                order_key = self._get_order_key()
+                
+                # Get message IDs in reverse order (most recent first)
+                msg_ids = self.redis_client.lrange(order_key, 0, -1)
+                
+                messages = []
+                for msg_id in reversed(msg_ids):  # Reverse to get chronological order
+                    try:
+                        msg_key = f"{key}:{msg_id}"
+                        msg_data = self.redis_client.get(msg_key)
+                        if msg_data:
+                            message = pickle.loads(msg_data)
+                            messages.append(message)
+                    except Exception as e:
+                        logger.warning(f"[SessionContextWindow] Failed to decode message {msg_id}: {e}")
+                
+                logger.debug(f"[SessionContextWindow] Retrieved {len(messages)} messages from window")
+                return messages
+            except Exception as e:
+                logger.warning(f"[SessionContextWindow] Failed to get context: {e}")
+                return []
+    
+    def get_formatted_context(self, max_lines: int = 50) -> str:
+        """
+        Get formatted context string for prompt engineering.
+        Format: "User: <content>\nAssistant: <content>\n..."
+        """
+        messages = self.get_context()
+        lines = []
+        
+        for msg in messages:
+            role = msg.get("role", "unknown").capitalize()
+            content = msg.get("content", "")
+            if content:
+                # Truncate long messages
+                if len(content) > 200:
+                    content = content[:200] + "..."
+                lines.append(f"{role}: {content}")
+        
+        # Limit total lines
+        if len(lines) > max_lines:
+            lines = lines[-max_lines:]
+        
+        return "\n".join(lines) if lines else ""
+    
+    def clear(self) -> bool:
+        """Clear all messages in this session's context window."""
+        with self.lock:
+            try:
+                key = self._get_key()
+                order_key = self._get_order_key()
+                
+                # Get all message IDs
+                msg_ids = self.redis_client.lrange(order_key, 0, -1)
+                
+                # Delete all messages
+                for msg_id in msg_ids:
+                    self.redis_client.delete(f"{key}:{msg_id}")
+                
+                # Clear order tracking
+                self.redis_client.delete(order_key)
+                
+                logger.info(f"[SessionContextWindow] Cleared {len(msg_ids)} messages")
+                return True
+            except Exception as e:
+                logger.warning(f"[SessionContextWindow] Failed to clear context: {e}")
+                return False
+    
+    def get_stats(self) -> Dict:
+        """Get window statistics."""
+        try:
+            order_key = self._get_order_key()
+            window_len = self.redis_client.llen(order_key)
+            
+            return {
+                "session_id": self.session_id,
+                "messages_in_window": window_len,
+                "window_size": self.window_size,
+                "utilization": window_len / self.window_size if self.window_size > 0 else 0,
+                "ttl_seconds": self.ttl_seconds
+            }
+        except Exception as e:
+            logger.warning(f"[SessionContextWindow] Failed to get stats: {e}")
+            return {"session_id": self.session_id, "status": "error"}
+
+
 class SemanticCacheRedis:
-    """Redis-based semantic cache with fallback to file-based storage."""
+    """
+    Redis-only semantic cache (OPTIMIZED).
+    No file-based fallback - Redis is required.
+    Caches semantic query responses per URL with similarity matching.
+    """
     
     def __init__(
         self, 
         ttl_seconds: int = 300, 
-        similarity_threshold: float = 0.90, 
-        cache_dir: str = "./cache",
+        similarity_threshold: float = 0.90,
         redis_host: str = "localhost",
         redis_port: int = 6379,
         redis_db: int = 0
     ):
         self.ttl_seconds = ttl_seconds
         self.similarity_threshold = similarity_threshold
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        
         self.redis_client = None
-        self.use_redis = False
         self.lock = threading.RLock()
         
-        # Try to initialize Redis connection
-        if REDIS_AVAILABLE:
-            try:
-                self.redis_client = redis.Redis(
-                    host=redis_host,
-                    port=redis_port,
-                    db=redis_db,
-                    decode_responses=False,
-                    socket_connect_timeout=5,
-                    socket_keepalive=True
-                )
-                # Test connection
-                self.redis_client.ping()
-                self.use_redis = True
-                logger.info(f"[SemanticCacheRedis] Connected to Redis @ {redis_host}:{redis_port} (db={redis_db})")
-            except Exception as e:
-                logger.warning(f"[SemanticCacheRedis] Failed to connect to Redis: {e}. Falling back to file-based cache.")
-                self.redis_client = None
-                self.use_redis = False
-        else:
-            logger.warning("[SemanticCacheRedis] Redis not installed. Using file-based cache.")
+        if not REDIS_AVAILABLE:
+            logger.error("[SemanticCacheRedis] Redis is REQUIRED but not installed")
+            raise RuntimeError("Redis installation is required for semantic caching")
         
-        # Fallback in-memory cache
-        self.fallback_cache: Dict[str, Dict] = {}
-        self._cleanup_expired_on_startup()
-        
-        logger.info(f"[SemanticCacheRedis] Initialized: TTL={ttl_seconds}s, threshold={similarity_threshold}, mode={'redis' if self.use_redis else 'file'}")
-    
-    def _get_request_cache_path(self, request_id: str) -> Path:
-        return self.cache_dir / f"cache_{request_id}.pkl"
+        try:
+            self.redis_client = redis.Redis(
+                host=redis_host,
+                port=redis_port,
+                db=redis_db,
+                decode_responses=False,
+                socket_connect_timeout=5,
+                socket_keepalive=True
+            )
+            self.redis_client.ping()
+            logger.info(f"[SemanticCacheRedis] Connected to Redis @ {redis_host}:{redis_port} (db={redis_db})")
+        except Exception as e:
+            logger.error(f"[SemanticCacheRedis] Failed to connect to Redis: {e}")
+            raise
     
     def _get_redis_key(self, request_id: str, url: str) -> str:
         """Generate a Redis key for caching."""
         return f"semantic_cache:{request_id}:{url}"
     
-    def _cleanup_expired_on_startup(self):
-        """Clean up expired file-based cache entries on startup."""
-        if not self.cache_dir.exists():
-            return
-        current_time = time.time()
-        expired_count = 0
-        for cache_file in self.cache_dir.glob("cache_*.pkl"):
-            try:
-                file_age = current_time - os.path.getmtime(cache_file)
-                if file_age > self.ttl_seconds:
-                    cache_file.unlink()
-                    expired_count += 1
-                    request_id = cache_file.stem.replace("cache_", "")
-                    logger.info(f"[SemanticCacheRedis] Removed expired cache: {request_id}")
-            except Exception as e:
-                logger.warning(f"[SemanticCacheRedis] Failed to cleanup {cache_file}: {e}")
-        if expired_count > 0:
-            logger.info(f"[SemanticCacheRedis] Cleaned up {expired_count} expired cache file(s) on startup")
-    
-    def _cleanup_runtime(self):
-        """Clean up expired in-memory fallback cache entries."""
-        with self.lock:
-            current_time = time.time()
-            expired_urls = []
-            for url, url_cache in self.fallback_cache.items():
-                expired_keys = [
-                    key for key, entry in url_cache.items()
-                    if current_time - entry["created_at"] > self.ttl_seconds
-                ]
-                for key in expired_keys:
-                    del url_cache[key]
-                if not url_cache:
-                    expired_urls.append(url)
-            for url in expired_urls:
-                del self.fallback_cache[url]
-            if expired_urls:
-                logger.debug(f"[SemanticCacheRedis] Cleaned up {len(expired_urls)} expired URL entries")
-    
-    def load_for_request(self, request_id: str) -> bool:
-        """Load request-specific cache from storage."""
-        if self.use_redis:
-            try:
-                # Redis doesn't need explicit loading; data is persisted
-                logger.info(f"[SemanticCacheRedis] Redis cache ready for request {request_id}")
-                return True
-            except Exception as e:
-                logger.error(f"[SemanticCacheRedis] Failed to prepare Redis cache for {request_id}: {e}")
-                return False
-        else:
-            # File-based fallback
-            cache_path = self._get_request_cache_path(request_id)
-            if not cache_path.exists():
-                logger.debug(f"[SemanticCacheRedis] No cache found for request {request_id}")
-                return False
-            try:
-                with open(cache_path, 'rb') as f:
-                    self.fallback_cache = pickle.load(f)
-                self._cleanup_runtime()
-                logger.info(f"[SemanticCacheRedis] Loaded cache for request {request_id}")
-                return True
-            except Exception as e:
-                logger.error(f"[SemanticCacheRedis] Failed to load cache for {request_id}: {e}")
-                return False
-    
-    def save_for_request(self, request_id: str) -> bool:
-        """Save request-specific cache to storage."""
-        if self.use_redis:
-            try:
-                # Redis auto-persists with TTL
-                logger.info(f"[SemanticCacheRedis] Redis cache auto-persisted for request {request_id}")
-                return True
-            except Exception as e:
-                logger.error(f"[SemanticCacheRedis] Failed to persist Redis cache for {request_id}: {e}")
-                return False
-        else:
-            # File-based fallback
-            cache_path = self._get_request_cache_path(request_id)
-            try:
-                with self.lock:
-                    with open(cache_path, 'wb') as f:
-                        pickle.dump(self.fallback_cache, f)
-                logger.info(f"[SemanticCacheRedis] Saved cache for request {request_id}")
-                return True
-            except Exception as e:
-                logger.error(f"[SemanticCacheRedis] Failed to save cache for {request_id}: {e}")
-                return False
-    
     def get(self, url: str, query_embedding: np.ndarray, request_id: str = "default") -> Optional[Dict]:
         """Get cached response for URL and query embedding."""
         with self.lock:
-            if self.use_redis:
-                return self._get_from_redis(url, query_embedding, request_id)
-            else:
-                return self._get_from_fallback(url, query_embedding)
-    
-    def _get_from_redis(self, url: str, query_embedding: np.ndarray, request_id: str) -> Optional[Dict]:
-        """Retrieve from Redis cache."""
-        try:
-            redis_key = self._get_redis_key(request_id, url)
-            cached_data = self.redis_client.get(redis_key)
-            
-            if not cached_data:
-                return None
-            
-            # Decompress cached data
-            cache_entry = pickle.loads(cached_data)
-            
-            # Find best matching embedding
-            best_match = None
-            best_similarity = 0.0
-            
-            query_emb = np.array(query_embedding, dtype=np.float32)
-            query_emb = query_emb / (np.linalg.norm(query_emb) + 1e-8)
-            
-            for cached_item in cache_entry["items"]:
-                cached_emb = np.array(cached_item["embedding"], dtype=np.float32)
-                cached_emb = cached_emb / (np.linalg.norm(cached_emb) + 1e-8)
-                similarity = float(np.dot(cached_emb, query_emb))
+            try:
+                redis_key = self._get_redis_key(request_id, url)
+                cached_data = self.redis_client.get(redis_key)
                 
-                if similarity > best_similarity:
-                    best_similarity = similarity
-                    best_match = cached_item
-            
-            if best_similarity >= self.similarity_threshold and best_match:
-                logger.debug(f"[SemanticCacheRedis] Redis HIT for {url} (similarity: {best_similarity:.3f})")
-                return best_match["response"]
-            
-            return None
-        except Exception as e:
-            logger.warning(f"[SemanticCacheRedis] Redis get error for {url}: {e}")
-            return None
-    
-    def _get_from_fallback(self, url: str, query_embedding: np.ndarray) -> Optional[Dict]:
-        """Retrieve from fallback file-based cache."""
-        if url not in self.fallback_cache:
-            return None
-        
-        url_cache = self.fallback_cache[url]
-        current_time = time.time()
-        best_match = None
-        best_similarity = 0.0
-        expired_keys = []
-        
-        for cache_key, cache_entry in url_cache.items():
-            age = current_time - cache_entry["created_at"]
-            if age > self.ttl_seconds:
-                expired_keys.append(cache_key)
-                continue
-            
-            cached_emb = np.array(cache_entry["query_embedding"], dtype=np.float32)
-            query_emb = np.array(query_embedding, dtype=np.float32)
-            cached_emb = cached_emb / (np.linalg.norm(cached_emb) + 1e-8)
-            query_emb = query_emb / (np.linalg.norm(query_emb) + 1e-8)
-            similarity = float(np.dot(cached_emb, query_emb))
-            
-            if similarity > best_similarity:
-                best_similarity = similarity
-                best_match = cache_entry
-        
-        for key in expired_keys:
-            del url_cache[key]
-        
-        if best_similarity >= self.similarity_threshold and best_match:
-            logger.debug(f"[SemanticCacheRedis] Fallback HIT for {url} (similarity: {best_similarity:.3f})")
-            return best_match["response"]
-        return None
+                if not cached_data:
+                    return None
+                
+                cache_entry = pickle.loads(cached_data)
+                best_match = None
+                best_similarity = 0.0
+                
+                # Find best matching embedding
+                query_emb = np.array(query_embedding, dtype=np.float32)
+                query_emb = query_emb / (np.linalg.norm(query_emb) + 1e-8)
+                
+                for cached_item in cache_entry.get("items", []):
+                    cached_emb = np.array(cached_item["embedding"], dtype=np.float32)
+                    cached_emb = cached_emb / (np.linalg.norm(cached_emb) + 1e-8)
+                    similarity = float(np.dot(cached_emb, query_emb))
+                    
+                    if similarity > best_similarity:
+                        best_similarity = similarity
+                        best_match = cached_item
+                
+                if best_similarity >= self.similarity_threshold and best_match:
+                    logger.debug(f"[SemanticCacheRedis] HIT for {url} (similarity: {best_similarity:.3f})")
+                    return best_match["response"]
+                
+                return None
+            except Exception as e:
+                logger.warning(f"[SemanticCacheRedis] Get error for {url}: {e}")
+                return None
     
     def set(self, url: str, query_embedding: np.ndarray, response: Dict, request_id: str = "default") -> None:
         """Cache response for URL and query embedding."""
         with self.lock:
-            if self.use_redis:
-                self._set_in_redis(url, query_embedding, response, request_id)
-            else:
-                self._set_in_fallback(url, query_embedding, response)
-    
-    def _set_in_redis(self, url: str, query_embedding: np.ndarray, response: Dict, request_id: str) -> None:
-        """Store in Redis cache."""
-        try:
-            redis_key = self._get_redis_key(request_id, url)
-            
-            # Get existing cache or create new
-            cached_data = self.redis_client.get(redis_key)
-            if cached_data:
-                cache_entry = pickle.loads(cached_data)
-            else:
-                cache_entry = {"items": []}
-            
-            # Add new item
-            cache_entry["items"].append({
-                "embedding": query_embedding.tolist() if isinstance(query_embedding, np.ndarray) else query_embedding,
-                "response": response,
-                "timestamp": time.time()
-            })
-            
-            # Keep only last 50 items per URL
-            if len(cache_entry["items"]) > 50:
-                cache_entry["items"] = cache_entry["items"][-50:]
-            
-            # Store back in Redis with TTL
-            self.redis_client.setex(
-                redis_key,
-                self.ttl_seconds,
-                pickle.dumps(cache_entry)
-            )
-            logger.debug(f"[SemanticCacheRedis] Stored in Redis: {redis_key}")
-        except Exception as e:
-            logger.warning(f"[SemanticCacheRedis] Redis set error: {e}")
-    
-    def _set_in_fallback(self, url: str, query_embedding: np.ndarray, response: Dict) -> None:
-        """Store in fallback file-based cache."""
-        if url not in self.fallback_cache:
-            self.fallback_cache[url] = {}
-        
-        cache_key = hash(query_embedding.tobytes()) % (2**31)
-        self.fallback_cache[url][cache_key] = {
-            "query_embedding": query_embedding.tolist() if isinstance(query_embedding, np.ndarray) else query_embedding,
-            "response": response,
-            "created_at": time.time()
-        }
-        
-        if len(self.fallback_cache[url]) > 100:
-            oldest_key = min(self.fallback_cache[url].keys(), key=lambda k: self.fallback_cache[url][k]["created_at"])
-            del self.fallback_cache[url][oldest_key]
-    
-    def clear_request(self, request_id: str) -> bool:
-        """Clear cache for a specific request."""
-        if self.use_redis:
             try:
-                # Clear all Redis keys for this request
-                pattern = self._get_redis_key(request_id, "*")
-                keys = self.redis_client.keys(pattern)
-                if keys:
-                    self.redis_client.delete(*keys)
-                logger.info(f"[SemanticCacheRedis] Cleared Redis cache for request {request_id}")
-                return True
+                redis_key = self._get_redis_key(request_id, url)
+                
+                cached_data = self.redis_client.get(redis_key)
+                if cached_data:
+                    cache_entry = pickle.loads(cached_data)
+                else:
+                    cache_entry = {"items": []}
+                
+                # Add new item
+                cache_entry["items"].append({
+                    "embedding": query_embedding.tolist() if isinstance(query_embedding, np.ndarray) else query_embedding,
+                    "response": response,
+                    "timestamp": time.time()
+                })
+                
+                # Keep only last 50 items per URL
+                if len(cache_entry["items"]) > 50:
+                    cache_entry["items"] = cache_entry["items"][-50:]
+                
+                self.redis_client.setex(
+                    redis_key,
+                    self.ttl_seconds,
+                    pickle.dumps(cache_entry)
+                )
+                logger.debug(f"[SemanticCacheRedis] Stored: {redis_key}")
             except Exception as e:
-                logger.error(f"[SemanticCacheRedis] Failed to clear Redis cache for {request_id}: {e}")
-                return False
-        else:
-            # File-based fallback
-            cache_path = self._get_request_cache_path(request_id)
-            try:
-                if cache_path.exists():
-                    cache_path.unlink()
-                with self.lock:
-                    self.fallback_cache.clear()
-                logger.info(f"[SemanticCacheRedis] Cleared cache for request {request_id}")
-                return True
-            except Exception as e:
-                logger.error(f"[SemanticCacheRedis] Failed to clear cache for {request_id}: {e}")
-                return False
+                logger.warning(f"[SemanticCacheRedis] Set error: {e}")
     
     def get_stats(self) -> Dict:
         """Get cache statistics."""
-        with self.lock:
-            if self.use_redis:
-                try:
-                    info = self.redis_client.info("memory")
-                    return {
-                        "backend": "redis",
-                        "redis_memory_used": info.get("used_memory_human", "unknown"),
-                        "ttl_seconds": self.ttl_seconds,
-                        "similarity_threshold": self.similarity_threshold
-                    }
-                except Exception as e:
-                    logger.warning(f"[SemanticCacheRedis] Failed to get Redis stats: {e}")
-                    return {
-                        "backend": "redis",
-                        "status": "error",
-                        "error": str(e)
-                    }
-            else:
-                total_entries = sum(len(v) for v in self.fallback_cache.values())
-                cache_files = len(list(self.cache_dir.glob("cache_*.pkl")))
-                return {
-                    "backend": "file",
-                    "cached_urls": len(self.fallback_cache),
-                    "total_entries": total_entries,
-                    "cache_files_on_disk": cache_files,
-                    "ttl_seconds": self.ttl_seconds,
-                    "similarity_threshold": self.similarity_threshold
-                }
+        try:
+            info = self.redis_client.info("memory")
+            return {
+                "backend": "redis",
+                "redis_memory_used": info.get("used_memory_human", "unknown"),
+                "ttl_seconds": self.ttl_seconds,
+                "similarity_threshold": self.similarity_threshold
+            }
+        except Exception as e:
+            logger.warning(f"[SemanticCacheRedis] Failed to get stats: {e}")
+            return {"backend": "redis", "status": "error"}
 
 
 # Backward compatibility alias
 SemanticCache = SemanticCacheRedis
+

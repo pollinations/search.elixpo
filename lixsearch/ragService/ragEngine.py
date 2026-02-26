@@ -1,32 +1,57 @@
 from ragService.embeddingService import EmbeddingService
 from ragService.retrievalPipeline import RetrievalPipeline
 from ragService.vectorStore import VectorStore
+from ragService.cacheCoordinator import CacheCoordinator
 from sessions.sessionData import SessionData
-from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache
 import numpy as np
 from loguru import logger
 from typing import Dict, Optional
+from datetime import datetime
 from pipeline.config import LOG_MESSAGE_PREVIEW_TRUNCATE
 
 
-
 class RAGEngine:
+    """
+    OPTIMIZED: Redis-only RAG engine with coordinated caching strategy.
+    
+    Caching layers:
+    1. URL Embeddings (24h): Single embedding per URL, reused across queries
+    2. Semantic Responses (5m): URLs + query embeddings → retrieval results
+    3. Session Context Window (1h LRU): Conversation history for model context
+    """
+    
     def __init__(
         self,
         embedding_service: EmbeddingService,
         vector_store: VectorStore,
-        semantic_cache: SemanticCache,
-        session_data: SessionData
+        session_data: SessionData,
+        session_id: str,
+        redis_host: str = "localhost",
+        redis_port: int = 6379,
+        context_window_size: int = 20
     ):
         self.embedding_service = embedding_service
         self.vector_store = vector_store
-        self.semantic_cache = semantic_cache
         self.session_data = session_data
+        self.session_id = session_id
+        
+        # Initialize cache coordinator
+        self.cache_coordinator = CacheCoordinator(
+            session_id=session_id,
+            redis_host=redis_host,
+            redis_port=redis_port,
+            context_window_size=context_window_size,  # Default: 20 messages
+            context_window_ttl_seconds=3600  # 1 hour
+        )
+        
         self.retrieval_pipeline = RetrievalPipeline(
             embedding_service,
             vector_store
         )
-        logger.info("[RAG] Optimized RAG engine initialized")
+        logger.info(
+            f"[RAG] OPTIMIZED Redis-only engine initialized for session {session_id}: "
+            f"context_window={context_window_size} messages"
+        )
     
     def retrieve_context(
         self,
@@ -34,24 +59,38 @@ class RAGEngine:
         url: Optional[str] = None,
         top_k: int = 5
     ) -> Dict:
+        """
+        Retrieve context with coordinated caching strategy.
+        
+        Flow:
+        1. Check semantic cache for [URL + query embedding]
+        2. If miss, retrieve from vector store
+        3. Cache result in semantic cache
+        4. Combine with session context window
+        """
         try:
             query_embedding = self.embedding_service.embed_single(query)
             
+            # Layer 1: Check semantic cache (URL-specific + query)
             if url:
-                cached_response = self.semantic_cache.get(url, query_embedding)
+                cached_response = self.cache_coordinator.get_semantic_response(
+                    url=url,
+                    query_embedding=query_embedding
+                )
                 if cached_response:
                     logger.info(f"[RAG] Semantic cache HIT for {url}")
                     return {
                         "source": "semantic_cache",
                         "url": url,
                         "response": cached_response,
-                        "latency_ms": 1.0
+                        "latency_ms": 1.0,
+                        "cache_layer": "semantic"
                     }
             
-            # CRITICAL FIX #8: Try session data first, then global vector store
+            # Layer 2: Check session content (ChromaDB)
             session_content = self._get_session_content_context(query_embedding, top_k)
             
-            # Get global vector store results
+            # Layer 3: Check global vector store
             results = self.vector_store.search(query_embedding, top_k=top_k)
             context_texts = [r["metadata"]["text"] for r in results]
             sources = list(set([r["metadata"]["url"] for r in results]))
@@ -65,13 +104,14 @@ class RAGEngine:
                 sources.extend(session_content["sources"])
                 sources = list(set(sources))
             
-            session_context = self._get_session_context()
+            # Layer 4: Integrate session context window (conversation history with LRU)
+            session_context = self._get_session_context_window()
             
             full_context = ""
             if session_context:
-                full_context += f"Context from previous exchanges:\n{session_context}\n\n"
+                full_context += f"=== RECENT CONVERSATION CONTEXT ===\n{session_context}\n\n"
             
-            full_context += f"Retrieved Information:\n{context}"
+            full_context += f"=== RETRIEVED INFORMATION ===\n{context}"
             
             retrieval_result = {
                 "source": "vector_store",
@@ -80,11 +120,17 @@ class RAGEngine:
                 "sources": sources,
                 "chunk_count": len(results),
                 "scores": [r["score"] for r in results],
-                "query_embedding": query_embedding.tolist() if isinstance(query_embedding, np.ndarray) else query_embedding
+                "query_embedding": query_embedding.tolist() if isinstance(query_embedding, np.ndarray) else query_embedding,
+                "cache_layer": "vector_store"
             }
             
+            # Cache result for semantic reuse
             if url:
-                self.semantic_cache.set(url, query_embedding, retrieval_result)
+                self.cache_coordinator.cache_semantic_response(
+                    url=url,
+                    query_embedding=query_embedding,
+                    response=retrieval_result
+                )
             
             return retrieval_result
         
@@ -98,6 +144,7 @@ class RAGEngine:
             }
     
     def ingest_and_cache(self, url: str) -> Dict:
+        """Ingest URL content and cache embeddings."""
         try:
             chunk_count = self.retrieval_pipeline.ingest_url(url, max_words=3000)
             logger.info(f"[RAG] Ingested {chunk_count} chunks from {url}")
@@ -114,8 +161,19 @@ class RAGEngine:
                 "error": str(e)
             }
     
+    def add_message_to_context_window(self, role: str, content: str) -> int:
+        """
+        Add message to session context window.
+        Returns current window size.
+        """
+        return self.cache_coordinator.add_message_to_context(
+            role=role,
+            content=content,
+            metadata={"timestamp": datetime.now().isoformat()}
+        )
     
     def get_full_context(self, query: str, top_k: int = 5) -> Dict:
+        """Get complete context with cache metadata."""
         retrieval_result = self.retrieve_context(query, top_k=top_k)
         
         return {
@@ -123,63 +181,67 @@ class RAGEngine:
             "context": retrieval_result.get("context", ""),
             "sources": retrieval_result.get("sources", []),
             "cache_hit": retrieval_result.get("source") == "semantic_cache",
+            "cache_layer": retrieval_result.get("cache_layer"),
             "scores": retrieval_result.get("scores", [])
         }
     
     def get_stats(self) -> Dict:
+        """Get comprehensive cache statistics."""
         return {
             "vector_store": self.vector_store.get_stats(),
-            "semantic_cache": self.semantic_cache.get_stats(),
-            "session_memory": self.session_data.to_dict()
+            "cache_coordinator": self.cache_coordinator.get_cache_stats(),
+            "session_memory": self.session_data.to_dict() if hasattr(self.session_data, 'to_dict') else {}
         }
     
-    def build_rag_prompt_enhancement(self, session_id: str, top_k: int = 5) -> str:
+    def build_rag_prompt_enhancement(self) -> str:
+        """
+        Build prompt enhancement using formatted context window.
+        This provides the model with a sliding window of conversation memory.
+        """
         try:
-            # Get session memory context
-            context_parts = []
+            formatted_context = self.cache_coordinator.get_formatted_context(max_lines=20)
             
-            if self.session_data:
-                session_context = self._get_session_context()
-                if session_context:
-                    context_parts.append("=== Previous Context ===")
-                    context_parts.append(session_context)
-                    context_parts.append("")
-            
-            # Return formatted context for system prompt
-            rag_prompt = "\n".join(context_parts) if context_parts else ""
-            logger.info(f"[RAG] Built prompt enhancement: {len(rag_prompt)} chars")
-            return rag_prompt
+            if formatted_context:
+                prompt_enhancement = f"=== CONVERSATION HISTORY (Last 20 Messages) ===\n{formatted_context}\n\n"
+                logger.info(f"[RAG] Built prompt enhancement: {len(formatted_context)} chars")
+                return prompt_enhancement
+            return ""
         
         except Exception as e:
             logger.error(f"[RAG] Failed to build prompt enhancement: {e}")
             return ""
     
-    def _get_session_context(self) -> str:
-        """Extract context from SessionData's conversation history."""
-        if not self.session_data:
-            return ""
-        
+    def _get_session_context_window(self) -> str:
+        """
+        Get formatted context from session context window (LRU-managed).
+        Provides recent conversation history to model.
+        """
         try:
-            history = self.session_data.get_conversation_history()
-            if not history:
+            messages = self.cache_coordinator.get_context_messages()
+            if not messages:
                 return ""
             
-            # Build context from recent conversation turns
             context_parts = []
-            # Keep last 2-3 turns for context
-            for msg in history[-3:]:
-                role = msg.get("role", "unknown")
+            # Build context from recent messages
+            for msg in messages[-10:]:  # Keep last 10 messages
+                role = msg.get("role", "unknown").capitalize()
                 content = msg.get("content", "")
                 if content:
-                    context_parts.append(f"{role.capitalize()}: {content[:LOG_MESSAGE_PREVIEW_TRUNCATE]}")
+                    # Truncate very long messages
+                    if len(content) > 200:
+                        content = content[:200] + "..."
+                    context_parts.append(f"{role}: {content}")
             
             return "\n".join(context_parts) if context_parts else ""
         except Exception as e:
-            logger.warning(f"[RAG] Failed to extract session context: {e}")
+            logger.warning(f"[RAG] Failed to get session context window: {e}")
             return ""
     
     def _get_session_content_context(self, query_embedding: np.ndarray, top_k: int = 5) -> Dict:
-        """CRITICAL FIX #8: Get relevant content from session's fetched URLs using ChromaDB."""
+        """
+        Get relevant content from session's fetched URLs using ChromaDB.
+        Provides domain-specific context from pages user has visited.
+        """
         if not self.session_data or not hasattr(self.session_data, 'processed_content'):
             return {"texts": [], "sources": [], "combined": ""}
         
@@ -231,4 +293,5 @@ class RAGEngine:
         except Exception as e:
             logger.warning(f"[RAG] Failed to get session content context: {e}")
             return {"texts": [], "sources": [], "combined": ""}
+
 
