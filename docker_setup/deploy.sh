@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# lixSearch Production Deployment Helper
-# 
 # Usage:
 #   ./deploy.sh start              # Start single container
 #   ./deploy.sh start 3            # Start with 3 containers
@@ -15,19 +13,15 @@
 #   ./deploy.sh backup             # Backup Redis data
 
 set -e
-
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Settings
 COMPOSE_FILE="docker-compose.prod.yml"
 CONTAINER_COUNT=${2:-1}
 
-# Helper functions
 info() {
     echo -e "${BLUE}ℹ${NC} $1"
 }
@@ -65,18 +59,18 @@ start_services() {
     local count=$1
     check_env
     check_docker
-    
+
     info "Starting lixSearch with $count container(s)..."
-    
+
     if [ "$count" -eq 1 ]; then
         docker-compose -f "$COMPOSE_FILE" up -d
     else
         docker-compose -f "$COMPOSE_FILE" up -d --scale lixsearch-app="$count"
     fi
-    
+
     info "Waiting for services to be healthy (30 seconds)..."
     sleep 30
-    
+
     success "Services started"
     show_status
 }
@@ -84,10 +78,10 @@ start_services() {
 scale_containers() {
     local count=$1
     check_docker
-    
+
     info "Scaling to $count container(s)..."
     docker-compose -f "$COMPOSE_FILE" up -d --scale lixsearch-app="$count"
-    
+
     sleep 10
     success "Scaled to $count container(s)"
     show_status
@@ -121,7 +115,7 @@ show_status() {
 show_logs() {
     local service=${1:-nginx}
     check_docker
-    
+
     case "$service" in
         app|lixsearch)
             docker-compose -f "$COMPOSE_FILE" logs -f lixsearch-app
@@ -143,31 +137,28 @@ check_health() {
     echo ""
     info "Service Status:"
     show_status
-    
+
     echo ""
     info "Health Checks:"
-    
-    # Nginx
+
     if curl -s http://localhost/api/health > /dev/null 2>&1; then
         success "Nginx & API: HEALTHY"
     else
         error "Nginx & API: UNREACHABLE"
     fi
-    
-    # Redis
+
     if docker-compose -f "$COMPOSE_FILE" exec redis redis-cli ping > /dev/null 2>&1; then
         success "Redis: HEALTHY"
     else
         error "Redis: UNREACHABLE"
     fi
-    
-    # Chroma
+
     if docker-compose -f "$COMPOSE_FILE" exec chroma-server curl -s http://localhost:8000/api/version > /dev/null 2>&1; then
         success "Chroma: HEALTHY"
     else
         error "Chroma: UNREACHABLE"
     fi
-    
+
     echo ""
 }
 
@@ -184,45 +175,43 @@ backup_redis() {
     check_docker
     local timestamp=$(date +%Y%m%d_%H%M%S)
     local backup_dir="backups"
-    
+
     mkdir -p "$backup_dir"
-    
+
     info "Backing up Redis data..."
     docker-compose -f "$COMPOSE_FILE" exec redis redis-cli BGSAVE > /dev/null 2>&1
-    
+
     sleep 2
-    
+
     docker-compose -f "$COMPOSE_FILE" cp redis:/data/dump.rdb \
         "$backup_dir/redis_dump_${timestamp}.rdb" 2>/dev/null || true
-    
+
     success "Redis backed up to $backup_dir/redis_dump_${timestamp}.rdb"
-    
-    # Keep only last 10 backups
+
     ls -t "$backup_dir"/redis_dump_* | tail -n +11 | xargs -r rm
 }
 
 test_scaling() {
     check_docker
-    
+
     echo ""
     info "Testing scalability from 1 to 5 containers..."
-    
+
     for count in 1 2 3 5; do
         info "Scaling to $count container(s)..."
         scale_containers "$count"
-        
-        # Test health
+
         sleep 5
         response=$(curl -s -w "\n%{http_code}" http://localhost/api/health)
         status=$(echo "$response" | tail -n1)
-        
+
         if [ "$status" = "200" ]; then
             success "✓ $count container(s) - healthy"
         else
             error "✗ $count container(s) - unhealthy (HTTP $status)"
         fi
     done
-    
+
     info "Scaling test complete"
     echo ""
 }
@@ -268,7 +257,6 @@ ${YELLOW}Quick Start:${NC}
 EOF
 }
 
-# Main script logic
 case "${1:-help}" in
     start)
         start_services "$CONTAINER_COUNT"
