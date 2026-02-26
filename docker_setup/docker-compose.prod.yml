@@ -1,0 +1,275 @@
+version: '3.8'
+
+# Production-Ready Docker Compose for lixSearch
+# 
+# Features:
+# - Single container deployment (now)
+# - Ready for 2-3 container deployment (future)
+# - Nginx as single public endpoint (port 80/443)
+# - Shared Redis for semantic caching
+# - Shared embeddings storage
+# - Health checks on all services
+# - Secure network isolation (internal services not exposed)
+#
+# Deployment modes:
+# - Single container: docker-compose -f docker-compose.prod.yml up
+# - Multi-container: docker-compose -f docker-compose.prod.yml up --scale lixsearch-app=3
+
+services:
+  # ============================================================================
+  # SHARED INFRASTRUCTURE (One instance for all containers)
+  # ============================================================================
+
+  # Redis for semantic caching + session context + URL embeddings cache
+  # DB 0: semantic_cache (per-session, 5min TTL)
+  # DB 1: url_embeddings (global, 24h TTL)
+  # DB 2: session_context (per-session, 30min TTL)
+  redis:
+    image: redis:7-alpine
+    container_name: lixsearch-redis
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    environment:
+      - REDIS_REPL_DISKLESS_SYNC=yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - lixsearch-internal
+    expose:
+      - "6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Resource limits for single container
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # Chroma Vector Database Server
+  # Stores embeddings for URLs/documents
+  # Shared by all app containers
+  chroma-server:
+    image: chromadb/chroma:latest
+    container_name: lixsearch-chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma_data
+      - ANONYMIZED_TELEMETRY=FALSE
+      - CHROMA_LOG_LEVEL=INFO
+      - CHROMA_DB_IMPL=duckdb
+    volumes:
+      - embeddings-data:/chroma_data
+    networks:
+      - lixsearch-internal
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+
+  # Nginx Reverse Proxy & Load Balancer
+  # ONLY public-facing service
+  # Routes traffic to app containers
+  # Handles SSL termination and rate limiting
+  nginx:
+    image: nginx:latest
+    container_name: lixsearch-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx-cache:/var/cache/nginx
+    networks:
+      - lixsearch-internal
+    restart: unless-stopped
+    depends_on:
+      - lixsearch-app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # ============================================================================
+  # APPLICATION WORKERS (Scalable - deploy 1, 2, or 3 containers)
+  # ============================================================================
+
+  # Main lixSearch Application
+  # Runs internal load balancer + 10 workers per container
+  # Can be scaled horizontally: --scale lixsearch-app=3
+  lixsearch-app:
+    build:
+      context: ..
+      dockerfile: docker_setup/Dockerfile
+    # No container_name! Allows horizontal scaling
+    env_file:
+      - .env
+    environment:
+      # Application mode (load_balancer runs embedded LB + workers)
+      - APP_MODE=load_balancer
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+
+      # Logging
+      - LOG_LEVEL=INFO
+
+      # Redis configuration (shared for all containers)
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SEMANTIC_CACHE_REDIS_HOST=redis
+      - SEMANTIC_CACHE_REDIS_PORT=6379
+      - SEMANTIC_CACHE_REDIS_DB=0
+
+      # Chroma/Embeddings (shared for all containers)
+      - CHROMA_API_IMPL=http
+      - CHROMA_SERVER_HOST=chroma-server
+      - CHROMA_SERVER_PORT=8000
+
+      # Worker configuration
+      - WORKER_COUNT=10
+      - WORKER_START_PORT=8001
+      - WORKER_TIMEOUT=120
+
+      # Load balancer settings
+      - LOAD_BALANCER_PORT=8000
+      - LOAD_BALANCER_HEALTH_CHECK_INTERVAL=10
+      - LOAD_BALANCER_HEALTH_CHECK_TIMEOUT=5
+
+    volumes:
+      # SHARED: Embedding models (read-only) - persists across container restarts
+      - embedding-models:/app/models:ro
+
+      # SHARED: Embeddings storage - persists across container restarts
+      - embeddings-data:/app/data/embeddings
+
+      # SHARED: Cache directory - session caches, conversation caches
+      - cache-data:/app/data/cache
+
+      # SHARED: Logs directory
+      - logs:/app/logs
+
+      # Per-container: Local cache (ephemeral)
+      - /tmp/cache:/app/tmp/cache
+
+    networks:
+      - lixsearch-internal
+
+    # IMPORTANT: Don't expose any ports
+    # All traffic goes through nginx
+    expose:
+      - "8000"
+
+    restart: unless-stopped
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      chroma-server:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    # Resource limits per container
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+
+# ============================================================================
+# VOLUMES (Shared across all containers on same VPS)
+# ============================================================================
+volumes:
+  # Redis persistent data
+  redis-data:
+    driver: local
+
+  # Chroma embeddings database
+  embeddings-data:
+    driver: local
+
+  # Embedding models (loaded once, shared)
+  embedding-models:
+    driver: local
+
+  # Cache directory (session, conversation, etc.)
+  cache-data:
+    driver: local
+
+  # Nginx cache
+  nginx-cache:
+    driver: local
+
+  # Logs
+  logs:
+    driver: local
+
+# ============================================================================
+# NETWORKS (Internal service discovery, isolated from public)
+# ============================================================================
+networks:
+  lixsearch-internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
