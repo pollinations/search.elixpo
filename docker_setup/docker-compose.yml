@@ -91,7 +91,7 @@ services:
       args:
         - BUILDKIT_INLINE_CACHE=1
     env_file:
-      - .env
+      - ../.env
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1

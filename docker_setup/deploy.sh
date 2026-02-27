@@ -39,11 +39,13 @@ error() {
 }
 
 check_env() {
-    if [ ! -f ".env" ]; then
-        error ".env file not found"
-        info "Copy .env.prod to .env and customize:"
-        echo "  cp .env.prod .env"
-        echo "  nano .env"
+    if [ ! -f "../.env" ]; then
+        error ".env file not found in root directory"
+        info "Use the root .env file with:"
+        echo "  TOKEN=your_token"
+        echo "  MODEL=your_model"
+        echo "  IMAGE_MODEL=your_image_model"
+        echo "  HF_TOKEN=your_hf_token"
         exit 1
     fi
 }
@@ -263,16 +265,17 @@ ${YELLOW}Examples:${NC}
   ./deploy.sh backup                      # Backup Redis
 
 ${YELLOW}Environment:${NC}
-  Copy .env.prod to .env and customize before running:
-    cp .env.prod .env
-    nano .env
+  Use the root .env file with required variables:
+    TOKEN=your_token
+    MODEL=your_model
+    IMAGE_MODEL=your_image_model
+    HF_TOKEN=your_hf_token
 
 ${YELLOW}Quick Start:${NC}
-  1. cp .env.prod .env
-  2. nano .env
-  3. ./deploy.sh build no-cache
-  4. ./deploy.sh start 3
-  5. ./deploy.sh health
+  1. Ensure .env exists in root directory
+  2. ./deploy.sh build no-cache
+  3. ./deploy.sh start 3
+  4. ./deploy.sh health
 
 EOF
 }
