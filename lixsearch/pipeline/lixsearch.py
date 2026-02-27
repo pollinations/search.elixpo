@@ -17,7 +17,7 @@ from pipeline.config import (POLLINATIONS_ENDPOINT,
                              CACHE_EMBEDDING_MODEL,
                              SEMANTIC_CACHE_DIR, CONVERSATION_CACHE_DIR, SEMANTIC_CACHE_TTL_SECONDS,
                              SEMANTIC_CACHE_SIMILARITY_THRESHOLD, REDIS_URL,
-                             MIN_LINKS_TO_TAKE, MAX_LINKS_TO_TAKE, SEARCH_MAX_RESULTS)
+                             MIN_LINKS_TO_TAKE, MAX_LINKS_TO_TAKE, SEARCH_MAX_RESULTS, RETRIEVAL_TOP_K)
 from pipeline.instruction import system_instruction, user_instruction, synthesis_instruction
 from pipeline.optimized_tool_execution import optimized_tool_execution
 from pipeline.utils import format_sse, get_model_server
@@ -625,6 +625,24 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             logger.info(f"[SYNTHESIS CONDITION MET] final_message_content={bool(final_message_content)}, current_iteration={current_iteration}, max_iterations={max_iterations}")
             if event_id:
                 yield format_sse("INFO", get_user_message("synthesizing"))
+            
+            # RE-RETRIEVE from vector store AFTER ingesting all URLs
+            logger.info("[SYNTHESIS] Re-retrieving context from vector store after ingestion...")
+            try:
+                from searching.main import retrieve_from_vector_store
+                updated_rag_context = retrieve_from_vector_store(user_query, top_k=RETRIEVAL_TOP_K)
+                if updated_rag_context:
+                    rag_context_str = "\n".join([
+                        f"- {item.get('text', '')[:200]}" 
+                        for item in updated_rag_context if item.get('text')
+                    ])
+                    logger.info(f"[SYNTHESIS] Retrieved {len(updated_rag_context)} chunks after ingestion ({len(rag_context_str)} chars)")
+                    if rag_context_str:
+                        rag_context = rag_context_str
+                else:
+                    logger.warning("[SYNTHESIS] No additional context retrieved from vector store")
+            except Exception as e:
+                logger.warning(f"[SYNTHESIS] Failed to re-retrieve context: {e}")
             
             query_components = memoized_results.get("query_components", [user_query])
             if len(query_components) > 1:

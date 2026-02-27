@@ -22,5 +22,5 @@ model_cache/
 cache/
 session_embeddings/
 embeddings/
-.*rdb
+*.rdb
 chroma/
