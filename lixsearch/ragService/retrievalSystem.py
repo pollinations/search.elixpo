@@ -57,9 +57,9 @@ class RetrievalSystem:
                 logger.warning(f"[RetrievalSystem] Failed to parse REDIS_URL, using defaults: {e}")
         
         self.semantic_cache = SemanticCache(
+            session_id="global",
             ttl_seconds=SEMANTIC_CACHE_TTL_SECONDS,
             similarity_threshold=SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
-            cache_dir=SEMANTIC_CACHE_DIR,
             redis_host=redis_host,
             redis_port=redis_port,
             redis_db=redis_db
