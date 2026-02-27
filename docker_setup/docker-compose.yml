@@ -54,6 +54,34 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Nginx Load Balancer - External entry point for all requests
+  # Routes to multiple lixsearch-app instances with health checks
+  nginx:
+    image: nginx:latest
+    container_name: lixsearch-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx-cache:/var/cache/nginx
+    networks:
+      - elixpo-network
+    restart: unless-stopped
+    depends_on:
+      - lixsearch-app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # scalable app service - runs in worker/load_balancer mode
   # scale with: docker-compose up -d --scale lixsearch-app=3
   lixsearch-app:
@@ -117,6 +145,8 @@ volumes:
   cache-data:
     driver: local
   logs:
+    driver: local
+  nginx-cache:
     driver: local
 
 networks:
