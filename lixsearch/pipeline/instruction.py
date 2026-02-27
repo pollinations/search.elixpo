@@ -14,13 +14,17 @@ IF AN IMAGE URL IS PROVIDED IN THE QUERY:
 - Never ignore or skip image analysis when image URL is in the context
 
 TOOL EXECUTION PRIORITY (DEFAULT - no image):
-1. FIRST: Use query_conversation_cache to check cached conversations
+1. FIRST: Check if query is asking for SUMMARY/RECAP/CONVERSATION REVIEW
+   - Keywords: "summarize", "recap", "what have we", "our conversation", "discussed", "review our chat", "history"
+   - ACTION: Use get_session_conversation_history(session_id) to retrieve FULL conversation context
+   - This ensures you have complete chat history before responding
+2. SECOND: Use query_conversation_cache for semantic similarity checking of past Q&A
    - Cache maintains semantic window of previous Q&A pairs
    - Returns compressed, indexed conversation history
    - High similarity match → Use cached response (skip RAG/web search)
    - Low similarity → Continue with RAG/web search pipeline
-2. SECOND: Use RAG context if no cache hit found
-3. THIRD: Use web_search for current/time-sensitive information
+3. THIRD: Use RAG context if no cache hit found
+4. FOURTH: Use web_search for current/time-sensitive information
 
 RESPONSE LENGTH:
 - Simple factual (time, weather, quick facts): 1-3 sentences
@@ -38,13 +42,17 @@ KNOWLEDGE GRAPH CONTEXT (Primary Source):
 {rag_context}
 CURRENT UTC TIME: {current_utc_time}
 TOOL SELECTION FRAMEWORK:
-1. IMAGE PROVIDED? → Use replyFromImage(imageURL, query) immediately for visual analysis
-2. REAL-TIME DATA REQUIRED? → Use web_search (weather, news, prices, scores, events)
-3. NEEDS LOCATION/TIME? → Use get_local_time(location) for timezone queries
-4. SPECIFIC URL PROVIDED? → Use fetch_full_text(url) for detailed content
-5. YOUTUBE VIDEO? → Use youtubeMetadata(url) or transcribe_audio(url, full_transcript=true)
-6. IMAGE SIMILARITY SEARCH? → Use generate_prompt_from_image + image_search when requested
-7. UNCERTAIN OR OUTDATED INFO? → Start with web_search to verify
+1. CONVERSATION SUMMARY DETECTED? → Use get_session_conversation_history(session_id) IMMEDIATELY to retrieve full chat history
+   - Keywords indicating summary request: "summarize", "recap", "what have we discussed", "history of our conversation", "review"
+   - This MUST be done before any other tools
+   - Returns complete conversation context for accurate summaries
+2. IMAGE PROVIDED? → Use replyFromImage(imageURL, query) immediately for visual analysis
+3. REAL-TIME DATA REQUIRED? → Use web_search (weather, news, prices, scores, events)
+4. NEEDS LOCATION/TIME? → Use get_local_time(location) for timezone queries
+5. SPECIFIC URL PROVIDED? → Use fetch_full_text(url) for detailed content
+6. YOUTUBE VIDEO? → Use youtubeMetadata(url) or transcribe_audio(url, full_transcript=true)
+7. IMAGE SIMILARITY SEARCH? → Use generate_prompt_from_image + image_search when requested
+8. UNCERTAIN OR OUTDATED INFO? → Start with web_search to verify
 SMART WEB SEARCH USAGE:
 - Use only when RAG context is insufficient or potentially outdated
 - Keep searches focused: 3-4 maximum per response
@@ -125,7 +133,10 @@ Query: {query if query else "(Image provided - analyze and generate search query
 {"Image URL: " + image_url if image_url else ""}
 
 Guidelines:
-- FIRST PRIORITY: Check conversation cache using query_conversation_cache tool
+- CONVERSATION HISTORY CHECK: If query contains words like "summarize", "recap", "what have we", "discussed", "review", or "history"
+  → IMMEDIATELY use get_session_conversation_history(session_id) to retrieve full conversation before responding
+  → This ensures accurate summaries and conversation context
+- Standard queries: Check conversation cache using query_conversation_cache tool
   - If cache returns a valid match (similarity > threshold), use cached response
   - This saves time and resources for similar/repeated queries
 - If no cache hit found: Proceed with RAG lookup and web searches

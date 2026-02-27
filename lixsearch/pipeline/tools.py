@@ -197,6 +197,28 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "get_session_conversation_history",
+            "description": "Retrieve FULL conversation history for the current session. Use this when user asks for summary, recap, or 'what have we discussed'. Returns all messages in chronological order from the session context window. CRITICAL: Always use this before summarizing to ensure you have the complete conversation context.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "The session ID to retrieve conversation history for. This is passed by the system - use current session_id."
+                    },
+                    "include_metadata": {
+                        "type": "boolean",
+                        "description": "Include timestamps and role information for each message",
+                        "default": True
+                    }
+                },
+                "required": ["session_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "analyze_query_complexity",
             "description": "Analyze query complexity and determine if it should be decomposed into sub-queries. Returns complexity assessment, detected aspects, and decomposition recommendation with confidence score.",
             "parameters": {
