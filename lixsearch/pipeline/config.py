@@ -99,7 +99,7 @@ CONNECTION_POOL_ENABLE = True
 
 REDIS_ENABLED = True
 REDIS_HOST = "localhost"
-REDIS_PORT = 6380  # Non-standard port to avoid conflicts with other Redis servers
+REDIS_PORT = 6380  
 REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 REDIS_SOCKET_CONNECT_TIMEOUT = 5
 REDIS_SOCKET_KEEPALIVE = True
@@ -130,10 +130,10 @@ SEMANTIC_CACHE_REDIS_CLEANUP_INTERVAL = 300
 SEMANTIC_CACHE_REDIS_STATS_INTERVAL = 60
 SEMANTIC_CACHE_REDIS_ENABLE_MONITORING = True
 
-IPC_HOST = os.getenv("IPC_HOST", "localhost")
-IPC_PORT = int(os.getenv("IPC_PORT", "5010"))
-IPC_AUTHKEY = os.getenv("IPC_AUTHKEY", "ipcService").encode() if isinstance(os.getenv("IPC_AUTHKEY", "ipcService"), str) else os.getenv("IPC_AUTHKEY", b"ipcService")
-IPC_TIMEOUT = int(os.getenv("IPC_TIMEOUT", "30"))
+IPC_HOST = "localhost"
+IPC_PORT = 5010
+IPC_AUTHKEY = b"ipcService"
+IPC_TIMEOUT = 30
 ENABLE_VECTOR_DB_MONITORING = True
 ENABLE_PERFORMANCE_METRICS = True
 ENABLE_REQUEST_TRACING = True
