@@ -2,7 +2,6 @@ from typing import List
 from pipeline.config import  RETRIEVAL_TOP_K
 from loguru import logger
 from multiprocessing.managers import BaseManager
-from ragService.embeddingService import EmbeddingService
 from ragService.vectorStore import VectorStore
 from ragService.retrievalPipeline import RetrievalPipeline
 from typing import Dict

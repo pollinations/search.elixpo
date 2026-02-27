@@ -1,11 +1,10 @@
-from ragService.embeddingService import EmbeddingService
 from ragService.retrievalPipeline import RetrievalPipeline
 from ragService.vectorStore import VectorStore
 from ragService.cacheCoordinator import CacheCoordinator
 from sessions.sessionData import SessionData
 import numpy as np
 from loguru import logger
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 from datetime import datetime
 from pipeline.config import (
     LOG_MESSAGE_PREVIEW_TRUNCATE,
@@ -31,7 +30,7 @@ class RAGEngine:
     
     def __init__(
         self,
-        embedding_service: EmbeddingService,
+        embedding_service,
         vector_store: VectorStore,
         session_data: SessionData,
         session_id: str,
@@ -42,7 +41,7 @@ class RAGEngine:
         Initialize RAG engine for a session.
         
         Args:
-            embedding_service: Service for generating embeddings
+            embedding_service: Service for generating embeddings (EmbeddingService or EmbeddingServiceClient)
             vector_store: Persistent vector database
             session_data: Session-specific data store
             session_id: REQUIRED - Unique session identifier for cache isolation

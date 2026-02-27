@@ -1,4 +1,3 @@
-from ragService.embeddingService import EmbeddingService
 from ragService.vectorStore import VectorStore
 import requests
 from loguru import logger
@@ -8,7 +7,14 @@ from typing import List, Dict
 from commons.minimal import chunk_text, clean_text
 
 class RetrievalPipeline:
-    def __init__(self, embedding_service: EmbeddingService, vector_store: VectorStore):
+    def __init__(self, embedding_service, vector_store: VectorStore):
+        """
+        Initialize retrieval pipeline.
+        
+        Args:
+            embedding_service: Service for generating embeddings (EmbeddingService, EmbeddingServiceClient, or compatible)
+            vector_store: Vector store for storing/retrieving embeddings
+        """
         self.embedding_service = embedding_service
         self.vector_store = vector_store
     

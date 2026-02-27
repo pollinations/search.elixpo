@@ -2,7 +2,7 @@ import threading
 from loguru import logger
 import numpy as np
 from typing import Dict, List
-from ragService.embeddingService import EmbeddingService
+from ragService.embeddingServiceClient import EmbeddingServiceClient
 from ragService.vectorStore import VectorStore
 from ragService.ragEngine import RAGEngine
 from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache
@@ -35,8 +35,16 @@ class RetrievalSystem:
     
     def __init__(self):
         logger.info("[RetrievalSystem] Initializing...")
-        self.embedding_service = EmbeddingService(model_name=EMBEDDING_MODEL)
-        logger.info(f"[RetrievalSystem] Embedding service device: {self.embedding_service.device}")
+        
+        # Use IPC client to avoid loading embedding model in each worker
+        logger.info("[RetrievalSystem] Connecting to shared IPC embedding service...")
+        try:
+            self.embedding_service = EmbeddingServiceClient.get_instance()
+            logger.info(f"[RetrievalSystem] ✅ Connected to IPC embedding service (device: {self.embedding_service.device})")
+        except Exception as e:
+            logger.error(f"[RetrievalSystem] Failed to connect to IPC embedding service: {e}")
+            logger.warning("[RetrievalSystem] Make sure the IPC service is running (python -m ipcService.main)")
+            raise
         
         self.vector_store = VectorStore(embedding_dim=EMBEDDING_DIMENSION, embeddings_dir=EMBEDDINGS_DIR)
         logger.info(f"[RetrievalSystem] Vector store device: {self.vector_store.device}")

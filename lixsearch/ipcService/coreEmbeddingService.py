@@ -165,6 +165,32 @@ class CoreEmbeddingService:
     def get_semantic_cache_stats(self) -> Dict:
         return self.semantic_cache.get_stats()
     
+    def embed_batch(self, texts: List[str], batch_size: int = 32) -> List[List[float]]:
+        """
+        Embed a batch of texts. Returns embeddings as lists for IPC serialization.
+        """
+        try:
+            with self._gpu_lock:
+                embeddings = self.embedding_service.embed(texts, batch_size=batch_size)
+                # Convert numpy array to list for pickle serialization over IPC
+                return embeddings.tolist()
+        except Exception as e:
+            logger.error(f"[CORE] Batch embedding failed: {e}")
+            raise
+    
+    def embed_single_text(self, text: str) -> List[float]:
+        """
+        Embed a single text. Returns embedding as list for IPC serialization.
+        """
+        try:
+            with self._gpu_lock:
+                embedding = self.embedding_service.embed_single(text)
+                # Convert numpy array to list for pickle serialization over IPC
+                return embedding.tolist()
+        except Exception as e:
+            logger.error(f"[CORE] Single embedding failed: {e}")
+            raise
+    
     def _persist_worker(self) -> None:
         while True:
             try:
