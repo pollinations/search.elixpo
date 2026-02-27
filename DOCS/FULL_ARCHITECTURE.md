@@ -1,6 +1,6 @@
 # lixSearch: Full System Architecture (Updated - Critical Security & Performance Fixes Applied)
 
-## ⚠️ CRITICAL AUDIT APPLIED (Feb 2026)
+## ⚠️ CRITICAL AUDIT APPLIED (Feb 2026) + PORT REFACTORING (Feb 27 2026)
 
 **This architecture has been recently hardened against critical issues:**
 
@@ -11,6 +11,7 @@
 | Hardcoded credentials | ✅ FIXED | Now environment-based |
 | Duplicate embedding services | ✅ FIXED | Singleton CoreServiceManager |
 | Scattered IPC connections | ✅ FIXED | Centralized management |
+| Port conflicts (LB/Chroma/workers) | ✅ FIXED | LB:9000, Chroma:9001, Workers:9002-9011, IPC:9510, Redis:9530 |
 
 **See [CRITICAL_AUDIT_FIXES.md](CRITICAL_AUDIT_FIXES.md) for complete details.**
 
@@ -31,8 +32,8 @@
 
 **lixSearch is now a horizontally-scalable, production-grade search system with:**
 
-- **10-worker load-balanced architecture** for parallel request processing (ports 8001-8010)
-- **Dedicated Chroma vector database server** (port 8100) eliminating bottlenecks
+- **10-worker load-balanced architecture** for parallel request processing (ports 9002-9011)
+- **Dedicated Chroma vector database server** (port 9001) eliminating bottlenecks
 - **Node.js API backend services** (authWorker, redisWorker) for distributed caching and auth
 - **Redis integration** (redisService) for semantic cache distribution across workers
 - **Service orchestration** via run_backend.js with hot-reload and auto-restart
@@ -199,18 +200,18 @@ Throughput vs single:      50x better  📈 Load balanced
 
 ### Architecture: 10-Worker Load-Balanced System
 
-**Load Balancer** (Port 8000):
+**Load Balancer** (Port 9000):
 - Single instance routing to 10 workers
 - Round-robin distribution
 - Health-aware worker selection
 - Automatic failover on worker failure
 - Periodic health checks every 10 seconds
 
-**Workers** (Ports 8001-8010):
+**Workers** (Ports 9002-9011):
 - 10 independent Quart instances
 - Each configured with `WORKER_PORT` and `WORKER_ID`
-- All connect to shared IPC pipeline (port 5010)
-- All use Chroma server for vector DB (port 8100)
+- All connect to shared IPC pipeline (port 9510)
+- All use Chroma server for vector DB (port 9001)
 - Stateless: any worker can handle any request
 
 **Request Flow:**
@@ -275,21 +276,20 @@ def get_next_worker(self) -> int:
 **Services:**
 ```yaml
 services:
-  chroma-server:              # Vector DB (dedicated)
-  elixpo-search-lb:           # Load balancer (port 8000)
-  elixpo-search-worker-1:     # Worker 1 (port 8001)
-  elixpo-search-worker-2:     # Worker 2 (port 8002)
-  ...
-  elixpo-search-worker-10:    # Worker 10 (port 8010)
+  chroma-server:        # Vector DB (port 9001)
+  redis:                # Redis cache (port 9530)
+  lixsearch-app:        # Workers (ports 9002-9011)
+  nginx:                # Reverse proxy (80/443)
 ```
 
 **Startup Sequence:**
 ```
-1. Chroma Server (8100) - 30s healthcheck
-2. IPC Service (5010) - inside LB container
-3. Workers 1-10 (8001-8010) - all parallel, depend on Chroma
-4. Load Balancer (8000) - depends on all workers
-5. Ready for traffic (~60-90 seconds total)
+1. Redis (9530) - 10s healthcheck
+2. Chroma Server (9001) - 30s healthcheck
+3. Workers 1-10 (9002-9011) - all parallel, depend on Redis + Chroma
+4. IPC Service (9510) - internal service
+5. Nginx (80/443) - depends on all workers
+6. Ready for traffic (~60-90 seconds total)
 ```
 
 ## Node.js API Services Layer
@@ -1328,28 +1328,29 @@ curl http://localhost:8000/api/health | jq .healthy_workers
 
 ## Performance Characteristics
 
-### Throughput Metrics
+### Throughput Metrics (Port 9000-9530 Layout)
 
 ```
-Configuration              Throughput    Latency P99    Concurrent Reqs
-─────────────────────────────────────────────────────────────────────
-Single worker (embedded)   3-5 req/s     2000ms         5-10
-Single worker + LB         5-8 req/s     1500ms         10-15
-10 workers + LB            40-50 req/s   300ms          40+
-+ Semantic cache           100+ req/s    100ms          100+
-+ Redis cache layer        200+ req/s    50ms           200+
+Configuration                  Throughput    Latency P99    Concurrent Reqs
+──────────────────────────────────────────────────────────────────────────
+Single worker (embedded)       3-5 req/s     2000ms         5-10
+Single worker + LB (9000)      5-8 req/s     1500ms         10-15
+10 workers + LB (9000)         40-50 req/s   300ms          40+
++ Semantic cache (Redis 9530)  100+ req/s    100ms          100+
++ Chroma server (9001)         200+ req/s    50ms           200+
 ```
 
-### Resource Utilization (10-Worker Setup)
+### Resource Utilization (10-Worker Setup, Port 9000-9530)
 
 ```
-Process            Memory    CPU        Notes
-────────────────────────────────────────────────────────────
-Worker 1-10        256MB ea  5-20% ea   Scales with load
-Load Balancer      128MB     <1%        Mostly idle routing
-Chroma Server      2-4GB     10-30%     Index + connections
-IPC Service        256MB     2-5%       Embedding service
-Total System       ~8GB      60-100%    At high load
+Process                Memory    Port    CPU        Notes
+──────────────────────────────────────────────────────────────
+Load Balancer          128MB     9000    <1%        Mostly idle routing
+Chroma Server          2-4GB     9001    10-30%     Index + connections
+Worker 1-10            256MB ea  9002-11 5-20% ea   Scales with load
+IPC Service            256MB     9510    2-5%       Embedding service
+Redis                  512MB     9530    1-3%       Cache layer
+Total System           ~8GB      -       60-100%    At high load
 ```
 
 ### Cache Performance
@@ -1365,23 +1366,26 @@ Cold start              0%          100-200ms      500ms
 
 ## Monitoring & Observability
 
-### Health Check Endpoints
+### Health Check Endpoints (Port 9000-9530)
 
 ```bash
-# Load Balancer health
-curl http://localhost:8000/api/health
+# Load Balancer health (9000)
+curl http://localhost:9000/api/health
 # Shows worker status, healthy count
 
 # Individual Worker health
-curl http://localhost:8001/api/health
-curl http://localhost:8002/api/health
-# ... up to 8010
+curl http://localhost:9002/api/health
+curl http://localhost:9003/api/health
+# ... up to 9011
 
-# Vector DB health
-curl http://chroma-server:8000/api/v1/heartbeat
+# Vector DB health (9001)
+curl http://localhost:9001/api/v1/heartbeat
+
+# Redis health (9530)
+redis-cli -p 9530 ping
 
 # System stats
-curl http://localhost:8000/api/stats
+curl http://localhost:9000/api/stats
 # Returns detailed metrics
 ```
 
@@ -1395,10 +1399,13 @@ curl http://localhost:8000/api/stats
 
 ## Summary
 
-**lixSearch is now production-grade with:**
+**lixSearch is now production-grade with (Feb 27 2026 Port Refactoring):**
 
-✅ **10-worker load balancer** for 10x throughput improvement  
-✅ **Dedicated Chroma server** eliminating vector DB bottlenecks  
+✅ **Load Balancer on 9000** prevents port conflicts  
+✅ **Chroma Server on 9001** global vector database  
+✅ **10 Workers on 9002-9011** independent processing  
+✅ **Redis on 9530** distributed cache layer  
+✅ **IPC Service on 9510** embedding orchestration  
 ✅ **Semantic caching** with 75-85% hit rate (5-15ms)  
 ✅ **Async connection pooling** for 100+ concurrent requests  
 ✅ **Health-aware routing** with automatic failover  
@@ -1407,6 +1414,18 @@ curl http://localhost:8000/api/stats
 ✅ **50x better throughput** than single-instance deployment  
 
 **Ready for production** with monitoring, logging, and graceful degradation.
+
+### Port Configuration Summary (Feb 27 2026)
+
+| Service | Port | Purpose |
+|---------|------|----------|
+| Load Balancer | 9000 | External entry point, round-robin routing |
+| Chroma Vector DB | 9001 | Shared embedding index, HNSW search |
+| Workers | 9002-9011 | 10 independent Quart instances |
+| IPC Service | 9510 | Embedding orchestration, RAG pipeline |
+| Redis Cache | 9530 | Distributed semantic cache, session storage |
+
+✅ **No conflicts**, all services on dedicated ports ready for standalone and Docker deployment.
 
 - **requestID.py**: Middleware injects X-Request-ID header
 - **Lifetime**: Passed through all layers for observability

@@ -473,6 +473,14 @@ class SemanticCacheRedis:
         except Exception as e:
             logger.warning(f"[semanticCacheRedis.SemanticCacheRedis] session={self.session_id} Failed to get stats: {e}")
             return {"session_id": self.session_id, "status": "error"}
+    
+    def load_for_request(self, request_id: str) -> None:
+        """Legacy method: No-op (Redis backend handles persistence automatically)"""
+        logger.debug(f"[semanticCacheRedis.SemanticCacheRedis] session={self.session_id} load_for_request({request_id}) is no-op (Redis persistent)")
+    
+    def save_for_request(self, request_id: str) -> None:
+        """Legacy method: No-op (Redis backend handles persistence automatically via TTL)"""
+        logger.debug(f"[semanticCacheRedis.SemanticCacheRedis] session={self.session_id} save_for_request({request_id}) is no-op (Redis persistent)")
 
 
 # Backwards compatibility alias

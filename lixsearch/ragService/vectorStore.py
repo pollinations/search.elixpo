@@ -110,8 +110,8 @@ class VectorStore:
                     logger.debug(f"[VectorStore] Heartbeat: {heartbeat}")
                 except Exception as e:
                     logger.error(f"[VectorStore] Failed to connect to HTTP Chroma: {e}")
-                    logger.warning(f"[VectorStore] Retrying with default localhost...")
-                    self.client = chromadb.HttpClient(host="localhost", port=8000)
+                    logger.warning(f"[VectorStore] Retrying with default localhost on port {CHROMA_SERVER_PORT}...")
+                    self.client = chromadb.HttpClient(host="localhost", port=CHROMA_SERVER_PORT)
                     
             else:
                 # Fallback to embedded for backward compatibility (NOT RECOMMENDED for production)

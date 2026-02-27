@@ -10,6 +10,7 @@ from multiprocessing.managers import BaseManager
 from loguru import logger
 from ipcService.coreEmbeddingService import CoreEmbeddingService
 from ipcService.searchPortManager import accessSearchAgents, _ensure_background_loop, run_async_on_bg_loop, agent_pool, shutdown_graceful
+from pipeline.config import IPC_HOST, IPC_PORT, IPC_AUTHKEY
 
 warnings.filterwarnings('ignore', message='Can\'t initialize NVML')
 os.environ['CHROMA_TELEMETRY_DISABLED'] = '1'
@@ -28,9 +29,9 @@ if __name__ == "__main__":
     ModelManager.register("accessSearchAgents", accessSearchAgents)
     core_service = CoreEmbeddingService()
     search_agents = accessSearchAgents()
-    manager = ModelManager(address=("localhost", 5010), authkey=b"ipcService")
+    manager = ModelManager(address=(IPC_HOST, IPC_PORT), authkey=IPC_AUTHKEY)
     server = manager.get_server()
-    logger.info("[MAIN] Core service started on port 5010...")
+    logger.info(f"[MAIN] Core service started on {IPC_HOST}:{IPC_PORT}...")
     logger.info(f"[MAIN] Vector store stats: {core_service.get_vector_store_stats()}")
 
     try:
