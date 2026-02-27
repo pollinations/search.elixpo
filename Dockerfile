@@ -49,10 +49,10 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY lixsearch /app/lixsearch
 COPY tester /app/tester
-COPY docker_setup/entrypoint.sh /app/docker_setup/entrypoint.sh
+COPY entrypoint.sh /app/entrypoint.sh
 COPY version.cfg requirements.txt /app/
 
-RUN chmod +x /app/docker_setup/entrypoint.sh && \
+RUN chmod +x /app/entrypoint.sh && \
     mkdir -p /app/logs /app/cache && \
     chown -R nobody:nogroup /app
 
@@ -66,4 +66,4 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=60s \
 
 EXPOSE 8000 8001 8002 8003 8004 8005 8006 8007 8008 8009 8010
 
-ENTRYPOINT ["/app/docker_setup/entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]

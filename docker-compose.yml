@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # Redis - Caching & semantic cache layer
   redis:
@@ -86,12 +88,12 @@ services:
   # scale with: docker-compose up -d --scale lixsearch-app=3
   lixsearch-app:
     build:
-      context: ..
-      dockerfile: docker_setup/Dockerfile
+      context: .
+      dockerfile: Dockerfile
       args:
         - BUILDKIT_INLINE_CACHE=1
     env_file:
-      - ../.env
+      - .env
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1

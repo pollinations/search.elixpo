@@ -19,7 +19,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-COMPOSE_FILE="docker-compose.prod.yml"
+COMPOSE_FILE="docker-compose.yml"
 CONTAINER_COUNT=${2:-1}
 
 info() {
@@ -39,7 +39,7 @@ error() {
 }
 
 check_env() {
-    if [ ! -f "../.env" ]; then
+    if [ ! -f ".env" ]; then
         error ".env file not found in root directory"
         info "Use the root .env file with:"
         echo "  TOKEN=your_token"
