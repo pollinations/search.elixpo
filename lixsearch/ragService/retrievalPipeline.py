@@ -17,7 +17,6 @@ USER_AGENTS = [
 ]
 
 def get_realistic_headers(url: str, user_agent_index: int = 0) -> dict:
-    """Generate realistic browser headers for web scraping"""
     parsed_url = urlparse(url)
     domain = parsed_url.netloc
     
@@ -39,13 +38,6 @@ def get_realistic_headers(url: str, user_agent_index: int = 0) -> dict:
 
 class RetrievalPipeline:
     def __init__(self, embedding_service, vector_store: VectorStore):
-        """
-        Initialize retrieval pipeline.
-        
-        Args:
-            embedding_service: Service for generating embeddings (EmbeddingService, EmbeddingServiceClient, or compatible)
-            vector_store: Vector store for storing/retrieving embeddings
-        """
         self.embedding_service = embedding_service
         self.vector_store = vector_store
     
@@ -59,7 +51,7 @@ class RetrievalPipeline:
                 if response.status_code != 200:
                     logger.warning(f"[Retrieval] Attempt {attempt + 1}/{max_retries} failed with status {response.status_code} for {url}")
                     if attempt < max_retries - 1:
-                        time.sleep(1 + attempt)  # Exponential backoff
+                        time.sleep(1 + attempt)
                         continue
                     logger.error(f"[Retrieval] Failed to ingest {url}: {response.status_code} Client Error")
                     return 0
@@ -150,4 +142,3 @@ class RetrievalPipeline:
             "chunk_count": len(results),
             "scores": [r["score"] for r in results]
         }
-
