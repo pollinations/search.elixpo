@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import gulp from 'gulp';
 import ts from 'gulp-typescript';
 import sourcemaps from 'gulp-sourcemaps';
@@ -67,7 +68,7 @@ function serve(cb) {
     },
     middleware: [
       createProxyMiddleware('/api', {
-        target: 'http://localhost:3002',
+        target: process.env.API_PROXY_TARGET || 'http://localhost:9002',
         changeOrigin: true,
         logLevel: 'debug'
       })
