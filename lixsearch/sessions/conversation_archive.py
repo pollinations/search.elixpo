@@ -157,12 +157,14 @@ class ConversationArchive:
         if not all_turns:
             return []
 
-        query_tokens = set(query.lower().split())
+        import re as _re
+        _tok = lambda s: set(_re.split(r'\W+', s.lower()))
+        query_tokens = _tok(query) - {""}
         scored: List[tuple] = []
 
         for turn in all_turns:
             content = turn.get("content", "") or ""
-            turn_tokens = set(content.lower().split())
+            turn_tokens = _tok(content) - {""}
             overlap = len(query_tokens & turn_tokens)
             if overlap > 0:
                 scored.append((overlap, turn))
