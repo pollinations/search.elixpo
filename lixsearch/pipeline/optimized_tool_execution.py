@@ -68,6 +68,43 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                 memoized_results["cache_hit"] = False
                 yield msg
 
+        elif function_name == "get_session_conversation_history":
+            logger.info("[Pipeline] Get session conversation history tool called")
+            session_id = function_args.get("session_id")
+            include_metadata = function_args.get("include_metadata", True)
+            
+            try:
+                if "session_context" in memoized_results and memoized_results["session_context"]:
+                    session_context = memoized_results["session_context"]
+                    conversation_history = session_context.get_context()
+                    
+                    if conversation_history:
+                        # Format conversation for display
+                        formatted_history = "## Conversation History\n\n"
+                        for i, msg in enumerate(conversation_history, 1):
+                            role = msg.get("role", "unknown").upper()
+                            content = msg.get("content", "")
+                            timestamp = msg.get("timestamp", "")
+                            
+                            if include_metadata and timestamp:
+                                from datetime import datetime
+                                ts_str = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
+                                formatted_history += f"**{i}. {role}** ({ts_str}):\n{content}\n\n"
+                            else:
+                                formatted_history += f"**{i}. {role}**:\n{content}\n\n"
+                        
+                        logger.info(f"[Pipeline] Retrieved {len(conversation_history)} messages for session {session_id}")
+                        yield formatted_history
+                    else:
+                        logger.info(f"[Pipeline] No conversation history found for session {session_id}")
+                        yield f"[SESSION] No previous conversation found for session {session_id}"
+                else:
+                    logger.warning("[Pipeline] Session context not initialized in this request")
+                    yield "[SESSION] Session context unavailable - no previous messages in this session"
+            except Exception as e:
+                logger.error(f"[Pipeline] Error retrieving session history: {e}")
+                yield f"[ERROR] Failed to retrieve conversation history: {str(e)}"
+
         elif function_name == "get_local_time":
             location_name = function_args.get("location_name")
             if location_name in memoized_results["timezone_info"]:

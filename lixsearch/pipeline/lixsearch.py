@@ -1,6 +1,6 @@
 from datetime import datetime
 from loguru import logger 
-from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache
+from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache, SessionContextWindow
 import random
 import requests
 import json
@@ -218,6 +218,19 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             "cache_hit": False,
             "cached_response": None
         }
+        
+        # Initialize session context for conversation history
+        session_context = None
+        if session_id:
+            try:
+                session_context = SessionContextWindow(session_id=session_id)
+                memoized_results["session_context"] = session_context
+                # Save user message immediately
+                session_context.add_message(role="user", content=user_query)
+                logger.info(f"[Pipeline] Initialized SessionContextWindow for {session_id}, saved user query")
+            except Exception as e:
+                logger.warning(f"[Pipeline] Failed to initialize SessionContextWindow: {e}")
+                session_context = None
         
         conversation_cache = ConversationCacheManager(
             window_size=CACHE_WINDOW_SIZE,
@@ -839,6 +852,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             except Exception as e:
                 logger.warning(f"[Pipeline] Failed to save to conversation cache: {e}")
             
+            # Track final response for session context
+            memoized_results["final_response"] = response_with_sources
+            
             if event_id:
                 yield format_sse("INFO", get_user_message("finalizing"))
                 yield format_sse("final", response_with_sources)
@@ -864,6 +880,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         response_parts.append(f"{i+1}. [{src}]({src})\n")
                 response_with_fallback = "".join(response_parts)
                 
+                # Track fallback response for session context
+                memoized_results["final_response"] = response_with_fallback
+                
                 if event_id:
                     yield format_sse("INFO", get_user_message("finalizing"))
                     chunk_size = 8000
@@ -885,6 +904,17 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         if event_id:
             yield format_sse("INFO", get_user_message("complete"))
     finally:
+        # Save assistant response to session context if available
+        if session_id and "session_context" in memoized_results and memoized_results["session_context"]:
+            try:
+                session_context = memoized_results["session_context"]
+                # Save the final response if we generated one
+                if "final_response" in memoized_results and memoized_results["final_response"]:
+                    session_context.add_message(role="assistant", content=memoized_results["final_response"])
+                    logger.info(f"[Pipeline] Saved assistant response to SessionContextWindow for {session_id}")
+            except Exception as e:
+                logger.warning(f"[Pipeline] Failed to save response to SessionContextWindow: {e}")
+        
         if request_id:
             semantic_cache.save_for_request(request_id)
             logger.info(f"[Pipeline] Saved persistent cache for request {request_id}")
