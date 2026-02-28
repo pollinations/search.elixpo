@@ -16,6 +16,20 @@ from app.gateways import health, search, session, chat, stats, websocket
 logger = logging.getLogger("lixsearch-api")
 
 
+def _run_archive_startup_cleanup() -> None:
+    """
+    Synchronous startup task: clean up expired conversation archives (>30 days old).
+    Runs once per process start, in a thread so it doesn't block startup.
+    """
+    try:
+        from sessions.hybrid_conversation_cache import _get_archive
+        archive = _get_archive()
+        removed = archive.cleanup_expired()
+        logger.info(f"[APP] Startup archive cleanup: removed {removed} expired sessions")
+    except Exception as e:
+        logger.warning(f"[APP] Startup archive cleanup error: {e}")
+
+
 class lixSearch:
     
     def __init__(self):
@@ -90,19 +104,27 @@ class lixSearch:
             async with self.initialization_lock:
                 if self.pipeline_initialized:
                     return
-                
+
                 logger.info("[APP] Initializing lixSearch (IPC service must be started manually)...")
                 try:
                     session_manager = get_session_manager()
                     retrieval_system = get_retrieval_system()
                     initialize_chat_engine(session_manager, retrieval_system)
-                    
+
                     self.pipeline_initialized = True
                     logger.info("[APP] lixSearch initialized and ready")
                 except Exception as e:
                     logger.error(f"[APP] Initialization failed: {e}", exc_info=True)
                     raise
-        
+
+                # Run conversation archive TTL cleanup on startup (async, non-blocking)
+                try:
+                    from pipeline.config import HYBRID_STARTUP_CLEANUP
+                    if HYBRID_STARTUP_CLEANUP:
+                        await asyncio.to_thread(_run_archive_startup_cleanup)
+                except Exception as e:
+                    logger.warning(f"[APP] Archive startup cleanup failed (non-fatal): {e}")
+
         @self.app.after_serving
         async def shutdown():
             logger.info("[APP] Shutting down lixSearch...")

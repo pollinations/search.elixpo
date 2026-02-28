@@ -214,9 +214,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             "youtube_metadata": {},
             "youtube_transcripts": {},
             "base64_cache": {},
-            "context_sufficient": False,  
+            "context_sufficient": False,
             "cache_hit": False,
-            "cached_response": None
+            "cached_response": None,
+            "session_id": session_id or "",   # used by optimized_tool_execution
         }
         session_context = None
         if session_id:
@@ -226,10 +227,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 previous_messages = session_context.get_context()
                 loaded_count = len(previous_messages)
                 session_context.add_message(role="user", content=user_query)
-                
+
                 logger.info(
                     f"[Pipeline] Initialized SessionContextWindow for {session_id}: "
-                    f"loaded {loaded_count} previous messages, added current query"
+                    f"loaded {loaded_count} hot messages, added current query"
                 )
             except Exception as e:
                 logger.warning(f"[Pipeline] Failed to initialize SessionContextWindow: {e}")
@@ -846,7 +847,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     "had_cache_hit": memoized_results.get("cache_hit", False)
                 }
                 conversation_cache.add_to_cache(
-                    query=user_query, 
+                    query=user_query,
                     response=final_message_content,
                     metadata=cache_metadata
                 )
@@ -854,7 +855,15 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 logger.info(f"[Pipeline] Saved to conversation cache. Stats: {cache_stats}")
             except Exception as e:
                 logger.warning(f"[Pipeline] Failed to save to conversation cache: {e}")
-            
+
+            # Persist assistant reply to hybrid conversation cache (disk-backed)
+            if session_context:
+                try:
+                    session_context.add_message(role="assistant", content=final_message_content)
+                    logger.debug(f"[Pipeline] Stored assistant reply in hybrid cache for session={session_id}")
+                except Exception as e:
+                    logger.warning(f"[Pipeline] Failed to store assistant reply in hybrid cache: {e}")
+
             # Track final response for session context
             memoized_results["final_response"] = response_with_sources
             
