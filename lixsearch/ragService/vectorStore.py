@@ -23,7 +23,7 @@ class VectorStore:
     _instance = None
     _lock = threading.Lock()
     
-    def __new__(cls, embedding_dim: int = None, embeddings_dir: str = "./embeddings"):
+    def __new__(cls, embedding_dim: int = None, embeddings_dir: str = "./data/embeddings"):
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -31,7 +31,7 @@ class VectorStore:
                     cls._instance._initialized = False
         return cls._instance
     
-    def __init__(self, embedding_dim: int = None, embeddings_dir: str = "./embeddings"):
+    def __init__(self, embedding_dim: int = None, embeddings_dir: str = "./data/embeddings"):
         if self._initialized:
             return
         

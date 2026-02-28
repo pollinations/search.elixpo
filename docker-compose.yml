@@ -5,7 +5,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: lixsearch-redis
-    command: redis-server --port 9530 --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    command: redis-server --port 9530 --dir /data --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
     environment:
       - REDIS_REPL_DISKLESS_SYNC=yes
     volumes:
@@ -166,6 +166,7 @@ services:
       - embedding-models:/app/models:ro
       - embeddings-data:/app/data/embeddings
       - cache-data:/app/data/cache
+      - conversations-data:/app/data/conversations
       - logs:/app/logs
       - /tmp/cache:/app/tmp/cache
     networks:
@@ -200,6 +201,8 @@ volumes:
   embedding-models:
     driver: local
   cache-data:
+    driver: local
+  conversations-data:
     driver: local
   logs:
     driver: local
