@@ -850,10 +850,18 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     "iteration": current_iteration,
                     "had_cache_hit": memoized_results.get("cache_hit", False)
                 }
+                # Embed via IPC (model already loaded there – avoids local SentenceTransformer load)
+                _cache_embedding = None
+                if core_service:
+                    try:
+                        _cache_embedding = core_service.embed_single_text(user_query)
+                    except Exception:
+                        pass
                 conversation_cache.add_to_cache(
                     query=user_query,
                     response=final_message_content,
-                    metadata=cache_metadata
+                    metadata=cache_metadata,
+                    query_embedding=_cache_embedding,
                 )
                 cache_stats = conversation_cache.get_cache_stats()
                 logger.info(f"[Pipeline] Saved to conversation cache. Stats: {cache_stats}")

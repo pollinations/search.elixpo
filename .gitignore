@@ -20,7 +20,8 @@ cached_audio/
 nltk_data/
 model_cache/
 cache/
+chroma/
 session_embeddings/
 embeddings/
 *.rdb
-chroma/
+data/

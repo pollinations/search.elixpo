@@ -33,17 +33,27 @@ async def optimized_tool_execution(function_name: str, function_args: dict, memo
             query = function_args.get("query")
             use_window = function_args.get("use_window", True)
             threshold = function_args.get("similarity_threshold")
-            
+
             if "conversation_cache" not in memoized_results:
                 yield "[CACHE] No conversation cache available"
                 return
-            
+
+            # Compute embedding via IPC service (model already loaded there – no local load)
+            precomputed_embedding = None
+            try:
+                from ipcService.coreServiceManager import get_core_embedding_service
+                _core = get_core_embedding_service()
+                precomputed_embedding = _core.embed_single_text(query)
+            except Exception as _e:
+                logger.warning(f"[CACHE] IPC embed failed, will fall back to local model: {_e}")
+
             cache_manager = memoized_results["conversation_cache"]
             cache_hit, similarity_score = cache_manager.query_cache(
                 query=query,
                 use_window=use_window,
                 similarity_threshold=threshold,
-                return_compressed=False
+                return_compressed=False,
+                query_embedding=precomputed_embedding,
             )
             
             if cache_hit:

@@ -62,7 +62,7 @@ class ConversationCacheManager:
             logger.warning(f"[ConversationCache] Failed to load embedding model: {e}")
             return False
 
-    def add_to_cache(self, query: str, response: str, metadata: Optional[Dict] = None) -> None:
+    def add_to_cache(self, query: str, response: str, metadata: Optional[Dict] = None, query_embedding=None) -> None:
         if len(query) < 10:
             return
             
@@ -78,11 +78,11 @@ class ConversationCacheManager:
             "ttl_expiry": (timestamp + timedelta(seconds=self.ttl_seconds)).isoformat()
         }
         
-        embedding = None
-        if self._load_embedding_model():
+        if query_embedding is not None:
+            self.embeddings_cache[entry_id] = np.array(query_embedding, dtype=np.float32)
+        elif self._load_embedding_model():
             try:
-                embedding = self.embedding_model.encode(query, convert_to_numpy=True)
-                self.embeddings_cache[entry_id] = embedding
+                self.embeddings_cache[entry_id] = self.embedding_model.encode(query, convert_to_numpy=True)
             except Exception as e:
                 logger.warning(f"[ConversationCache] Failed to generate embedding: {e}")
         
@@ -103,27 +103,30 @@ class ConversationCacheManager:
         
         logger.debug(f"[ConversationCache] Added to cache: {entry_id[:LOG_ENTRY_ID_DISPLAY_SIZE]}... (window size: {len(self.cache_window)}, total: {len(self.full_cache)})")
     
-    def query_cache(self, 
-                   query: str, 
+    def query_cache(self,
+                   query: str,
                    use_window: bool = True,
                    similarity_threshold: Optional[float] = None,
-                   return_compressed: bool = True) -> Tuple[Optional[Dict], float]:
-        
+                   return_compressed: bool = True,
+                   query_embedding=None) -> Tuple[Optional[Dict], float]:
+
         if len(query) < 10:
             return None, 0.0
-        
-        if not self._load_embedding_model():
-            logger.warning("[ConversationCache] No embedding model available for cache query")
-            return None, 0.0
-        
+
         threshold = similarity_threshold or self.similarity_threshold
         search_cache = self.cache_window if use_window else self.full_cache.values()
-        
+
         if not search_cache:
             return None, 0.0
-        
+
         try:
-            query_embedding = self.embedding_model.encode(query, convert_to_numpy=True)
+            if query_embedding is not None:
+                query_embedding = np.array(query_embedding, dtype=np.float32)
+            elif self._load_embedding_model():
+                query_embedding = self.embedding_model.encode(query, convert_to_numpy=True)
+            else:
+                logger.warning("[ConversationCache] No embedding model available for cache query")
+                return None, 0.0
             
             best_match = None
             best_score = 0.0
