@@ -252,7 +252,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             if conversation_cache.load_from_disk(session_id=request_id):
                 logger.info(f"[Pipeline] Loaded conversation cache from disk (session: {request_id})")
         
-        # Parse Redis URL for semantic cache initialization
+
         redis_host = "localhost"
         redis_port = 6379
         redis_db = 0
