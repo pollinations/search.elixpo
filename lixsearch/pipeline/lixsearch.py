@@ -218,16 +218,19 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             "cache_hit": False,
             "cached_response": None
         }
-        
-        # Initialize session context for conversation history
         session_context = None
         if session_id:
             try:
                 session_context = SessionContextWindow(session_id=session_id)
                 memoized_results["session_context"] = session_context
-                # Save user message immediately
+                previous_messages = session_context.get_context()
+                loaded_count = len(previous_messages)
                 session_context.add_message(role="user", content=user_query)
-                logger.info(f"[Pipeline] Initialized SessionContextWindow for {session_id}, saved user query")
+                
+                logger.info(
+                    f"[Pipeline] Initialized SessionContextWindow for {session_id}: "
+                    f"loaded {loaded_count} previous messages, added current query"
+                )
             except Exception as e:
                 logger.warning(f"[Pipeline] Failed to initialize SessionContextWindow: {e}")
                 session_context = None
