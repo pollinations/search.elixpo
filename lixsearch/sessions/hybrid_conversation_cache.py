@@ -40,6 +40,7 @@ from pipeline.config import (
     SESSION_LRU_EVICT_AFTER_MINUTES,
     HYBRID_HOT_WINDOW_SIZE,
     REDIS_PASSWORD,
+    create_redis_client,
 )
 
 try:
@@ -196,16 +197,7 @@ class HybridConversationCache:
         self._redis: Optional[Any] = None
         if _REDIS_AVAILABLE:
             try:
-                self._redis = _redis.Redis(
-                    host=redis_host,
-                    port=redis_port,
-                    db=redis_db,
-                    password=REDIS_PASSWORD,
-                    decode_responses=False,
-                    socket_connect_timeout=REDIS_SOCKET_CONNECT_TIMEOUT,
-                    socket_keepalive=REDIS_SOCKET_KEEPALIVE,
-                )
-                self._redis.ping()
+                self._redis = create_redis_client(host=redis_host, port=redis_port, db=redis_db)
                 # Start eviction background thread (once per process)
                 _start_eviction_thread(self._redis, evict_after_minutes * 60)
                 logger.debug(

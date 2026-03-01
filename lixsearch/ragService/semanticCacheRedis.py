@@ -27,6 +27,7 @@ from pipeline.config import (
     REDIS_SOCKET_KEEPALIVE,
     REDIS_KEY_PREFIX,
     REDIS_PASSWORD,
+    create_redis_client,
 )
 
 try:
@@ -61,18 +62,9 @@ class URLEmbeddingCache:
         
         if not REDIS_AVAILABLE:
             raise RuntimeError("[semanticCacheRedis.URLEmbeddingCache] Redis is required but not installed")
-        
+
         try:
-            self.redis_client = redis.Redis(
-                host=redis_host,
-                port=redis_port,
-                db=redis_db,
-                password=REDIS_PASSWORD,
-                decode_responses=False,
-                socket_connect_timeout=REDIS_SOCKET_CONNECT_TIMEOUT,
-                socket_keepalive=REDIS_SOCKET_KEEPALIVE
-            )
-            self.redis_client.ping()
+            self.redis_client = create_redis_client(host=redis_host, port=redis_port, db=redis_db)
             logger.info(f"[semanticCacheRedis.URLEmbeddingCache] session={session_id} connected to Redis @ {redis_host}:{redis_port} (db={redis_db})")
         except Exception as e:
             logger.error(f"[semanticCacheRedis.URLEmbeddingCache] session={session_id} Failed to connect: {e}")
@@ -251,18 +243,9 @@ class SemanticCacheRedis:
         if not REDIS_AVAILABLE:
             logger.error("[semanticCacheRedis.SemanticCacheRedis] Redis is REQUIRED but not installed")
             raise RuntimeError("Redis installation is required for semantic caching")
-        
+
         try:
-            self.redis_client = redis.Redis(
-                host=redis_host,
-                port=redis_port,
-                db=redis_db,
-                password=REDIS_PASSWORD,
-                decode_responses=False,
-                socket_connect_timeout=REDIS_SOCKET_CONNECT_TIMEOUT,
-                socket_keepalive=REDIS_SOCKET_KEEPALIVE
-            )
-            self.redis_client.ping()
+            self.redis_client = create_redis_client(host=redis_host, port=redis_port, db=redis_db)
             logger.info(
                 f"[semanticCacheRedis.SemanticCacheRedis] session={session_id} connected to Redis @ "
                 f"{redis_host}:{redis_port} (db={redis_db}, ttl={ttl_seconds}s, threshold={similarity_threshold})"

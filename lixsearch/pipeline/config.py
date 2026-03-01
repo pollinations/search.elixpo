@@ -118,13 +118,51 @@ CONNECTION_POOL_TIMEOUT = 10.0
 CONNECTION_POOL_ENABLE = True
 
 REDIS_ENABLED = True
-REDIS_HOST = os.getenv("REDIS_HOST")
-REDIS_PORT = os.getenv("REDIS_PORT")
-REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "9530"))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD") or None
 REDIS_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0" if REDIS_PASSWORD else f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 REDIS_SOCKET_CONNECT_TIMEOUT = 5
 REDIS_SOCKET_KEEPALIVE = True
 REDIS_KEY_PREFIX = "elixpo"
+
+
+def create_redis_client(host=None, port=None, db=0, **kwargs):
+    """Create a Redis client with automatic password fallback.
+
+    Tries connecting with REDIS_PASSWORD first.  If the server has no
+    password configured it returns AUTH-error; we then retry without a
+    password so the same code works both in Docker (password) and locally
+    (no password).
+    """
+    import redis as _redis
+
+    host = host or REDIS_HOST
+    port = port or REDIS_PORT
+
+    common = dict(
+        host=host,
+        port=int(port),
+        db=db,
+        decode_responses=kwargs.pop("decode_responses", False),
+        socket_connect_timeout=kwargs.pop("socket_connect_timeout", REDIS_SOCKET_CONNECT_TIMEOUT),
+        socket_keepalive=kwargs.pop("socket_keepalive", REDIS_SOCKET_KEEPALIVE),
+        **kwargs,
+    )
+
+    # Attempt with password first
+    if REDIS_PASSWORD:
+        try:
+            client = _redis.Redis(password=REDIS_PASSWORD, **common)
+            client.ping()
+            return client
+        except _redis.exceptions.AuthenticationError:
+            pass  # server has no password — fall through
+
+    # No password or password not needed
+    client = _redis.Redis(password=None, **common)
+    client.ping()
+    return client
 
 SEMANTIC_CACHE_REDIS_HOST = REDIS_HOST
 SEMANTIC_CACHE_REDIS_PORT = REDIS_PORT
