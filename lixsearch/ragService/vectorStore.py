@@ -96,22 +96,27 @@ class VectorStore:
                 logger.info(f"[VectorStore] Initializing HTTP Chroma client at {CHROMA_SERVER_HOST}:{CHROMA_SERVER_PORT}")
                 
                 # Create HTTP client with connection pooling
-                try:
-                    # HttpClient supports connection pooling via httpx internally
-                    self.client = chromadb.HttpClient(
-                        host=CHROMA_SERVER_HOST,
-                        port=CHROMA_SERVER_PORT,
-                        ssl=False,
-                        headers={}
-                    )
-                    # Verify connection
-                    heartbeat = self.client.heartbeat()
-                    logger.info(f"[VectorStore] ✅ Connected to Chroma HTTP server at {CHROMA_SERVER_HOST}:{CHROMA_SERVER_PORT}")
-                    logger.debug(f"[VectorStore] Heartbeat: {heartbeat}")
-                except Exception as e:
-                    logger.error(f"[VectorStore] Failed to connect to HTTP Chroma: {e}")
-                    logger.warning(f"[VectorStore] Retrying with default localhost on port {CHROMA_SERVER_PORT}...")
-                    self.client = chromadb.HttpClient(host="localhost", port=CHROMA_SERVER_PORT)
+                max_retries = 5
+                retry_delay = 3
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        self.client = chromadb.HttpClient(
+                            host=CHROMA_SERVER_HOST,
+                            port=CHROMA_SERVER_PORT,
+                            ssl=False,
+                            headers={}
+                        )
+                        heartbeat = self.client.heartbeat()
+                        logger.info(f"[VectorStore] Connected to Chroma HTTP server at {CHROMA_SERVER_HOST}:{CHROMA_SERVER_PORT}")
+                        logger.debug(f"[VectorStore] Heartbeat: {heartbeat}")
+                        break
+                    except Exception as e:
+                        logger.error(f"[VectorStore] Chroma connection attempt {attempt}/{max_retries} failed: {e}")
+                        if attempt < max_retries:
+                            logger.info(f"[VectorStore] Retrying in {retry_delay}s...")
+                            time.sleep(retry_delay)
+                        else:
+                            raise RuntimeError(f"Could not connect to Chroma at {CHROMA_SERVER_HOST}:{CHROMA_SERVER_PORT} after {max_retries} attempts")
                     
             else:
                 # Fallback to embedded for backward compatibility (NOT RECOMMENDED for production)
