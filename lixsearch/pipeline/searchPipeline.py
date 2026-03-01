@@ -16,9 +16,9 @@ if __name__ == "__main__":
         user_query = "give me the lastest news from india"
         user_image = None
         event_id = None
-        request_id = "test-request-001"
+        session_id = "test-session-001"
         start_time = asyncio.get_event_loop().time()
-        async_generator = run_elixposearch_pipeline(user_query, user_image, event_id=event_id, request_id=request_id)
+        async_generator = run_elixposearch_pipeline(user_query, user_image, event_id=event_id, session_id=session_id)
         answer = None
         try:
             async for event_chunk in async_generator:

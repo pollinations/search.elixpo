@@ -78,7 +78,6 @@ async def search(pipeline_initialized: bool):
                     user_query=query,
                     user_image=image_url,
                     event_id=request_id,
-                    request_id=request_id,
                     session_id=session_id
                 ):
                     chunk_str = chunk if isinstance(chunk, str) else chunk.decode('utf-8')
@@ -119,7 +118,6 @@ async def search(pipeline_initialized: bool):
                 user_query=query,
                 user_image=image_url,
                 event_id=None,
-                request_id=request_id,
                 session_id=session_id
             ):
                 if chunk:

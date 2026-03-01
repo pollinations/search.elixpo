@@ -313,25 +313,23 @@ def _evaluate_fetch_quality(tool_outputs: list) -> tuple[int, int]:
     return good, total
 
 
-async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: str = None, request_id: str = None, session_id: str = None):
+async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: str = None, session_id: str = None):
     """
     Main search pipeline with full caching and RAG support.
-    
+
     Args:
         user_query: User search query
         user_image: Optional image URL for image-based search
         event_id: Optional event ID for SSE streaming
-        request_id: Optional request ID for logging (generated if not provided)
         session_id: REQUIRED for cache isolation - unique session identifier
-        
+
     Note:
-        session_id is used throughout for cache isolation and conversation context.
-        Each session maintains its own semantic cache and context window.
+        session_id is the single orchestrator for all cross-service communication,
+        cache isolation, and conversation context.
     """
     logger.info(
         f"[pipeline] session={session_id} Starting ElixpoSearch: "
         f"query='{user_query[:LOG_MESSAGE_QUERY_TRUNCATE]}...' image={bool(user_image)} "
-        f"request_id={request_id}"
     )
     def emit_event(event_type, message):
         if event_id:
@@ -477,22 +475,22 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         memoized_results["conversation_cache"] = conversation_cache
         logger.info(f"[Pipeline] Initialized Conversation Cache Manager (window_size={CACHE_WINDOW_SIZE}, max_entries={CACHE_MAX_ENTRIES})")
         
-        if request_id:
-            if conversation_cache.load_from_disk(session_id=request_id):
-                logger.info(f"[Pipeline] Loaded conversation cache from disk (session: {request_id})")
+        if session_id:
+            if conversation_cache.load_from_disk(session_id=session_id):
+                logger.info(f"[Pipeline] Loaded conversation cache from disk (session: {session_id})")
         
 
         semantic_cache = SemanticCache(
-            session_id=request_id or "pipeline",
+            session_id=session_id or "pipeline",
             ttl_seconds=SEMANTIC_CACHE_TTL_SECONDS,
             similarity_threshold=SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
             redis_host=SEMANTIC_CACHE_REDIS_HOST,
             redis_port=SEMANTIC_CACHE_REDIS_PORT,
             redis_db=SEMANTIC_CACHE_REDIS_DB
         )
-        if request_id:
-            semantic_cache.load_for_request(request_id)
-            logger.info(f"[Pipeline] Loaded persistent Redis cache for request {request_id}")
+        if session_id:
+            semantic_cache.load_for_request(session_id)
+            logger.info(f"[Pipeline] Loaded persistent Redis cache for session {session_id}")
         
         image_context_provided = False
         if image_only_mode:
@@ -1337,13 +1335,13 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             except Exception as e:
                 logger.warning(f"[Pipeline] Failed to save response to SessionContextWindow: {e}")
         
-        if request_id and semantic_cache is not None:
-            semantic_cache.save_for_request(request_id)
-            logger.info(f"[Pipeline] Saved persistent cache for request {request_id}")
-            
+        if session_id and semantic_cache is not None:
+            semantic_cache.save_for_request(session_id)
+            logger.info(f"[Pipeline] Saved persistent cache for session {session_id}")
+
             try:
                 if "conversation_cache" in memoized_results:
-                    conversation_cache.save_to_disk(session_id=request_id)
+                    conversation_cache.save_to_disk(session_id=session_id)
                     cache_stats = conversation_cache.get_cache_stats()
                     logger.info(f"[Pipeline] Saved conversation cache to disk: {cache_stats}")
             except Exception as e:
