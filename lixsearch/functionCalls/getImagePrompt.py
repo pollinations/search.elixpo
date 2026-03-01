@@ -6,7 +6,7 @@ import os
 import requests
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from pipeline.config import IMAGE_SEARCH_QUERY_WORDS_LIMIT
+from pipeline.config import IMAGE_SEARCH_QUERY_WORDS_LIMIT, IMAGE_MODEL as CONFIG_IMAGE_MODEL
 
 load_dotenv()
 
@@ -44,7 +44,7 @@ EXAMPLES OF CORRECT OUTPUT:
 NOW GENERATE ONLY THE SEARCH QUERY FOR THIS IMAGE - NO OTHER TEXT:"""
 
     data = {
-        "model": os.getenv("IMAGE_MODEL"),
+        "model": CONFIG_IMAGE_MODEL,
         "messages": [
             {
                 "role": "user",
@@ -123,7 +123,7 @@ Prioritize:
 Avoid vague words. Be descriptive but concise. Don't assume, only describe what's clearly visible. If a person's face is clearly visible and recognizable, include their name."""
 
     data = {
-        "model": os.getenv("IMAGE_MODEL"),
+        "model": CONFIG_IMAGE_MODEL,
         "messages": [
             {
                 "role": "system",

@@ -3,13 +3,13 @@ from typing import List, Dict, Optional, AsyncGenerator
 import asyncio
 import requests
 import random
-from pipeline.config import POLLINATIONS_ENDPOINT, LOG_MESSAGE_PREVIEW_TRUNCATE
+from pipeline.config import POLLINATIONS_ENDPOINT, LOG_MESSAGE_PREVIEW_TRUNCATE, LLM_MODEL
 from dotenv import load_dotenv
 import os
 load_dotenv()
 
 POLLINATIONS_TOKEN = os.getenv("TOKEN")
-MODEL = os.getenv("MODEL")
+MODEL = LLM_MODEL
 class ChatEngine:
     
     def __init__(self, session_manager, retrieval_system):

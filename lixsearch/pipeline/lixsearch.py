@@ -11,9 +11,9 @@ from sessions.conversation_cache import ConversationCacheManager
 from pipeline.config import LOG_MESSAGE_QUERY_TRUNCATE, LOG_MESSAGE_CONTEXT_TRUNCATE, LOG_MESSAGE_PREVIEW_TRUNCATE, ERROR_MESSAGE_TRUNCATE
 import os 
 from dotenv import load_dotenv
-from pipeline.config import (POLLINATIONS_ENDPOINT, 
-                             CACHE_WINDOW_SIZE, CACHE_MAX_ENTRIES, CACHE_TTL_SECONDS, 
-                             CACHE_SIMILARITY_THRESHOLD, CACHE_COMPRESSION_METHOD, 
+from pipeline.config import (POLLINATIONS_ENDPOINT, LLM_MODEL,
+                             CACHE_WINDOW_SIZE, CACHE_MAX_ENTRIES, CACHE_TTL_SECONDS,
+                             CACHE_SIMILARITY_THRESHOLD, CACHE_COMPRESSION_METHOD,
                              CACHE_EMBEDDING_MODEL,
                              SEMANTIC_CACHE_DIR, CONVERSATION_CACHE_DIR, SEMANTIC_CACHE_TTL_SECONDS,
                              SEMANTIC_CACHE_SIMILARITY_THRESHOLD, REDIS_URL,
@@ -26,7 +26,7 @@ import asyncio
 load_dotenv()
 
 POLLINATIONS_TOKEN = os.getenv("TOKEN")
-MODEL = os.getenv("MODEL")
+MODEL = LLM_MODEL
 logger.debug(f"Model configured: {MODEL}")
 
 INTERNAL_LEAK_PATTERNS = [

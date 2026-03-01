@@ -3,10 +3,9 @@ import logging
 import sys
 import json
 import uuid
-import os
 from datetime import datetime, timezone
 import tiktoken
-from pipeline.config import REQUEST_ID_HEX_SLICE_SIZE
+from pipeline.config import REQUEST_ID_HEX_SLICE_SIZE, RESPONSE_MODEL
 
 def setup_logger(name: str) -> logging.Logger:
     logging.basicConfig(
@@ -27,16 +26,15 @@ def count_tokens(text: str, model: str = "gpt-5-") -> int:
 
 
 def format_openai_response(content: str, request_id: str = None) -> str:
-    model = os.getenv("MODEL", "gpt-3.5-turbo")
     escaped_content = content.replace('\n', '\\n')
-    completion_tokens = count_tokens(content, model)
+    completion_tokens = count_tokens(content)
     prompt_tokens = 0 
     
     response = {
         "id": request_id or f"chatcmpl-{uuid.uuid4().hex[:REQUEST_ID_HEX_SLICE_SIZE]}",
         "object": "chat.completion",
         "created": int(datetime.now(timezone.utc).timestamp()),
-        "model": "lixsearch",
+        "model": RESPONSE_MODEL,
         "choices": [
             {
                 "index": 0,
