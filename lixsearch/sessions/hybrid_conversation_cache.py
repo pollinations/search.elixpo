@@ -20,7 +20,7 @@ Design for throughput:
 """
 import threading
 import time
-import pickle
+import json
 from typing import Dict, List, Optional, Any
 
 from loguru import logger
@@ -125,7 +125,7 @@ def _migrate_to_disk(session_id: str, redis_client) -> None:
             raw = redis_client.get(msg_key)
             if raw:
                 try:
-                    msg = pickle.loads(raw)
+                    msg = json.loads(raw)
                     turns.append(msg)
                 except Exception:
                     pass
@@ -270,7 +270,7 @@ class HybridConversationCache:
             msg_key = f"{ctx_key}:{turn_id}"
 
             pipe = self._redis.pipeline()
-            pipe.setex(msg_key, self.redis_ttl, pickle.dumps(msg))
+            pipe.setex(msg_key, self.redis_ttl, json.dumps(msg).encode("utf-8"))
             pipe.lpush(order_key, turn_id)
             pipe.expire(order_key, self.redis_ttl)
             pipe.execute()
@@ -286,7 +286,7 @@ class HybridConversationCache:
                         raw = self._redis.get(old_key)
                         if raw:
                             try:
-                                old_msg = pickle.loads(raw)
+                                old_msg = json.loads(raw)
                                 self.archive.append_turn(self.session_id, old_msg)
                             except Exception:
                                 pass
@@ -323,7 +323,7 @@ class HybridConversationCache:
                 raw = self._redis.get(f"{ctx_key}:{mid}")
                 if raw:
                     try:
-                        messages.append(pickle.loads(raw))
+                        messages.append(json.loads(raw))
                     except Exception:
                         pass
             return messages
