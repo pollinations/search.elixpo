@@ -8,22 +8,40 @@ import re
 from pipeline.tools import tools
 from datetime import datetime, timezone
 from sessions.conversation_cache import ConversationCacheManager
-from pipeline.config import LOG_MESSAGE_QUERY_TRUNCATE, LOG_MESSAGE_CONTEXT_TRUNCATE, LOG_MESSAGE_PREVIEW_TRUNCATE, ERROR_MESSAGE_TRUNCATE
+
 import os 
 from dotenv import load_dotenv
-from pipeline.config import (POLLINATIONS_ENDPOINT, LLM_MODEL,
-                             CACHE_WINDOW_SIZE, CACHE_MAX_ENTRIES, CACHE_TTL_SECONDS,
-                             CACHE_SIMILARITY_THRESHOLD, CACHE_COMPRESSION_METHOD,
-                             CACHE_EMBEDDING_MODEL,
-                             SEMANTIC_CACHE_DIR, CONVERSATION_CACHE_DIR, SEMANTIC_CACHE_TTL_SECONDS,
-                             SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
-                             SEMANTIC_CACHE_REDIS_HOST, SEMANTIC_CACHE_REDIS_PORT, SEMANTIC_CACHE_REDIS_DB,
-                             MIN_LINKS_TO_TAKE, MAX_LINKS_TO_TAKE,
-                             MIN_LINKS_TO_TAKE_DETAILED, MAX_LINKS_TO_TAKE_DETAILED,
-                             LLM_MAX_TOKENS, LLM_MAX_TOKENS_DETAILED,
-                             SEARCH_MAX_RESULTS, SEARCH_MAX_RESULTS_DETAILED, RETRIEVAL_TOP_K,
-                             TOPIC_DECOMPOSITION_MAX_PARTS, TOPIC_DECOMPOSITION_TIMEOUT)
-from pipeline.instruction import system_instruction, user_instruction, synthesis_instruction
+from pipeline.config import (
+    ERROR_MESSAGE_TRUNCATE,
+    MIN_LINKS_TO_TAKE_DETAILED,
+    MAX_LINKS_TO_TAKE_DETAILED,
+    LLM_MAX_TOKENS_DETAILED,
+    MIN_LINKS_TO_TAKE,
+    MAX_LINKS_TO_TAKE,
+    LLM_MAX_TOKENS,
+    CACHE_WINDOW_SIZE,
+    CACHE_MAX_ENTRIES,
+    CACHE_TTL_SECONDS,
+    CACHE_COMPRESSION_METHOD,
+    CACHE_EMBEDDING_MODEL,
+    CACHE_SIMILARITY_THRESHOLD,
+    CONVERSATION_CACHE_DIR,
+    POLLINATIONS_ENDPOINT,
+    LLM_MODEL,
+    RETRIEVAL_TOP_K,
+    SEMANTIC_CACHE_TTL_SECONDS,
+    SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
+    SEMANTIC_CACHE_REDIS_HOST,
+    SEMANTIC_CACHE_REDIS_PORT,
+    SEMANTIC_CACHE_REDIS_DB,
+    TOPIC_DECOMPOSITION_MAX_PARTS,
+    TOPIC_DECOMPOSITION_TIMEOUT,
+    FETCH_MIN_USEFUL_CHARS,
+)
+
+from pipeline.instruction import system_instruction
+from pipeline.instruction import user_instruction
+from pipeline.instruction import synthesis_instruction
 from pipeline.optimized_tool_execution import optimized_tool_execution
 from pipeline.utils import format_sse, get_model_server
 from functionCalls.getImagePrompt import generate_prompt_from_image
@@ -272,6 +290,29 @@ def _strip_internal_lines(content: str) -> str:
     return "\n".join(cleaned).strip()
 
 
+_FETCH_FAIL_PATTERNS = re.compile(
+    r"^\[(?:TIMEOUT|ERROR|CACHED)\]|^No result$|^\[No content fetched",
+    re.IGNORECASE,
+)
+
+
+
+
+def _evaluate_fetch_quality(tool_outputs: list) -> tuple[int, int]:
+    """Return (good_count, total_fetch_count) from a list of tool outputs."""
+    total = 0
+    good = 0
+    for out in tool_outputs:
+        if out.get("name") != "fetch_full_text":
+            continue
+        total += 1
+        content = out.get("content", "")
+        if not content or _FETCH_FAIL_PATTERNS.match(content) or len(content) < FETCH_MIN_USEFUL_CHARS:
+            continue
+        good += 1
+    return good, total
+
+
 async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: str = None, request_id: str = None, session_id: str = None):
     """
     Main search pipeline with full caching and RAG support.
@@ -476,8 +517,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             logger.info(f"[Pipeline] Image + Query mode: Will analyze image in context of query")
             image_context_provided = True
         
-        max_iterations = 3 
+        max_iterations = 3
         current_iteration = 0
+        fetch_retry_done = False  
         collected_sources = []
         collected_images_from_web = []
         collected_similar_images = []
@@ -811,6 +853,85 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         )
                     except asyncio.TimeoutError:
                         logger.warning("[INGESTION] Timeout reached, continuing anyway")
+
+                # ── FETCH QUALITY CHECK & RETRY (max 1 retry) ──
+                good_fetches, total_fetches = _evaluate_fetch_quality(tool_outputs)
+                if total_fetches > 0 and good_fetches == 0 and not fetch_retry_done:
+                    fetch_retry_done = True
+                    logger.warning(
+                        f"[RETRY] All {total_fetches} URL fetches returned no usable content — retrying with fresh search"
+                    )
+                    if event_id:
+                        yield format_sse("INFO", "<TASK>Sources unavailable, retrying with new results</TASK>")
+
+                    # Fresh web search with slightly rephrased query
+                    from commons.searching_based import webSearch
+                    retry_query = f"{user_query} latest information"
+                    retry_urls = await asyncio.to_thread(webSearch, retry_query)
+                    logger.info(f"[RETRY] Fresh search returned {len(retry_urls)} URLs")
+
+                    if retry_urls:
+                        # Pick URLs we haven't already tried
+                        already_tried = {
+                            out.get("content", "").split("\n")[0].replace("URL: ", "")
+                            for out in tool_outputs if out.get("name") == "fetch_full_text"
+                        }
+                        new_urls = [u for u in retry_urls if u not in already_tried][:active_max_links]
+
+                        if new_urls:
+                            if event_id:
+                                yield format_sse("INFO", f"<TASK>Reading {len(new_urls)} new sources</TASK>")
+
+                            from commons.searching_based import fetch_url_content_parallel
+
+                            async def _retry_fetch_single(url):
+                                try:
+                                    result = await asyncio.wait_for(
+                                        asyncio.to_thread(
+                                            fetch_url_content_parallel,
+                                            [user_query], [url]
+                                        ),
+                                        timeout=10.0,
+                                    )
+                                    return {"url": url, "content": result}
+                                except Exception as e:
+                                    logger.warning(f"[RETRY FETCH] {url[:50]} failed: {e}")
+                                    return {"url": url, "content": ""}
+
+                            try:
+                                retry_results = await asyncio.wait_for(
+                                    asyncio.gather(
+                                        *[_retry_fetch_single(u) for u in new_urls],
+                                        return_exceptions=True
+                                    ),
+                                    timeout=12.0,
+                                )
+                            except (asyncio.TimeoutError, TimeoutError):
+                                logger.warning("[RETRY] Parallel retry timed out")
+                                retry_results = []
+
+                            retry_added = 0
+                            for r in retry_results:
+                                if isinstance(r, Exception) or not r.get("content"):
+                                    continue
+                                content = str(r["content"])
+                                if len(content) >= _FETCH_MIN_USEFUL_CHARS:
+                                    tool_outputs.append({
+                                        "role": "tool",
+                                        "tool_call_id": "retry-fetch",
+                                        "name": "fetch_full_text",
+                                        "content": content[:500],
+                                    })
+                                    if r["url"] not in collected_sources and len(collected_sources) < 5:
+                                        collected_sources.append(r["url"])
+                                    retry_added += 1
+
+                            logger.info(f"[RETRY] Added {retry_added} usable results from retry round")
+                elif total_fetches > 0 and good_fetches < total_fetches:
+                    logger.info(
+                        f"[FETCH QUALITY] {good_fetches}/{total_fetches} fetches returned usable content"
+                    )
+
             messages.extend(tool_outputs)
             logger.info(f"Completed iteration {current_iteration}. Messages: {len(messages)}, Total tools: {tool_call_count}")
             if event_id:
