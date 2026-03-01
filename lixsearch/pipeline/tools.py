@@ -155,6 +155,23 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "create_image",
+            "description": "Generate an image from a text prompt using AI image generation. Use when the user explicitly asks to create/generate/draw an image, or when a visual diagram/illustration would significantly help explain a concept. Returns a URL to the generated image. Do NOT use for image search - use image_search instead.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "A detailed, descriptive prompt for image generation. Be specific about subjects, style, colors, composition, and mood."
+                    }
+                },
+                "required": ["prompt"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "youtubeMetadata",
             "description": "Fetch metadata (title, description, duration, views) from a YouTube URL",
             "parameters": {

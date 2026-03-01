@@ -218,6 +218,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             "cache_hit": False,
             "cached_response": None,
             "session_id": session_id or "",   # used by optimized_tool_execution
+            "generated_images": [],
         }
         session_context = None
         if session_id:
@@ -836,6 +837,16 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 logger.info(f"[FINAL] Added {images_added} images from collected results (existing in synthesis: {len(existing_image_urls)})")
             elif has_image_markdown:
                 logger.info(f"[FINAL] No collected image pool; using {image_count_in_synthesis} image references from synthesis")
+
+            generated_images = memoized_results.get("generated_images", [])
+            if generated_images:
+                gen_deduped = [img for img in generated_images if img not in existing_image_urls]
+                if gen_deduped:
+                    response_parts.append("\n\n**Generated Images:**\n")
+                    for img in gen_deduped:
+                        response_parts.append(f"![Generated Image]({img})\n")
+                    logger.info(f"[FINAL] Added {len(gen_deduped)} generated images")
+
             if collected_sources:
                 response_parts.append("\n\n---\n**Sources:**\n")
                 unique_sources = sorted(list(set(collected_sources)))[:5]

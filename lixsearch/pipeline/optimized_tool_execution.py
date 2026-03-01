@@ -3,6 +3,7 @@ from commons.minimal import cleanQuery
 from pipeline.tools import tools
 from functionCalls.getTimeZone import get_local_time
 from functionCalls.getImagePrompt import generate_prompt_from_image, replyFromImage
+from functionCalls.generateImage import create_image_from_prompt
 import asyncio
 import time
 import json
@@ -187,6 +188,23 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
             except Exception as e:
                 logger.error(f"Image query error: {e}")
                 yield f"[ERROR] Image query failed: {str(e)[:ERROR_MESSAGE_TRUNCATE]}"
+
+        elif function_name == "create_image":
+            web_event = emit_event_func("INFO", "<TASK>Generating Image</TASK>")
+            if web_event:
+                yield web_event
+            prompt = function_args.get("prompt")
+            try:
+                image_url = await create_image_from_prompt(prompt)
+                if "generated_images" not in memoized_results:
+                    memoized_results["generated_images"] = []
+                memoized_results["generated_images"].append(image_url)
+                result = f"Generated image for prompt: '{prompt}'\nImage URL: {image_url}"
+                logger.info(f"Generated image: {image_url}")
+                yield result
+            except Exception as e:
+                logger.error(f"Image generation error: {e}")
+                yield f"[ERROR] Image generation failed: {str(e)[:ERROR_MESSAGE_TRUNCATE]}"
 
         elif function_name == "image_search":
             start_time = time.time()
