@@ -15,6 +15,22 @@ from pipeline.config import MAX_IMAGES_TO_INCLUDE, LOG_MESSAGE_QUERY_TRUNCATE, L
 from pipeline.queryDecomposition import QueryAnalyzer, DecompositionEvaluator
 from pipeline.formalOptimization import ConstrainedOptimizer
 from commons.robustnessFramework import ToolOutputSanitizer, SanitizationPolicy
+from urllib.parse import urlparse
+
+
+def _display_url(url: str, max_len: int = 40) -> str:
+    """Extract a short display label from a URL (domain + truncated path)."""
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc.replace("www.", "")
+        path = parsed.path.rstrip("/")
+        short = domain + path
+        if len(short) > max_len:
+            short = short[:max_len] + "…"
+        return short
+    except Exception:
+        return url[:max_len] + "…" if len(url) > max_len else url
+
 
 async def optimized_tool_execution(function_name: str, function_args: dict, memoized_results: dict, emit_event_func):
     try:
@@ -161,10 +177,10 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
             yield tool_result
 
         elif function_name == "generate_prompt_from_image":
-            web_event = emit_event_func("INFO", "<TASK>Analyzing Image</TASK>")
+            image_url = function_args.get("imageURL")
+            web_event = emit_event_func("INFO", f"<TASK>Analyzing image from {_display_url(image_url)}</TASK>")
             if web_event:
                 yield web_event
-            image_url = function_args.get("imageURL")
             try:
                 get_prompt = await generate_prompt_from_image(image_url)
                 result = f"Generated Search Query: {get_prompt}"
@@ -175,11 +191,11 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                 yield f"[ERROR] Image analysis failed: {str(e)[:ERROR_MESSAGE_TRUNCATE]}"
 
         elif function_name == "replyFromImage":
-            web_event = emit_event_func("INFO", "<TASK>Processing Image Query</TASK>")
-            if web_event:
-                yield web_event
             image_url = function_args.get("imageURL")
             query = function_args.get("query")
+            web_event = emit_event_func("INFO", f"<TASK>Analyzing image: '{query[:50]}'</TASK>")
+            if web_event:
+                yield web_event
             try:
                 reply = await replyFromImage(image_url, query)
                 result = f"Reply from Image: {reply}"
@@ -190,10 +206,10 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                 yield f"[ERROR] Image query failed: {str(e)[:ERROR_MESSAGE_TRUNCATE]}"
 
         elif function_name == "create_image":
-            web_event = emit_event_func("INFO", "<TASK>Generating Image</TASK>")
+            prompt = function_args.get("prompt")
+            web_event = emit_event_func("INFO", f"<TASK>Generating image: '{prompt[:60]}'</TASK>")
             if web_event:
                 yield web_event
-            prompt = function_args.get("prompt")
             try:
                 image_url = await create_image_from_prompt(prompt)
                 if "generated_images" not in memoized_results:
@@ -208,15 +224,15 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
 
         elif function_name == "image_search":
             start_time = time.time()
-            web_event = emit_event_func("INFO", f"<TASK>Finding Images</TASK>")
+            image_query = function_args.get("image_query")
+            web_event = emit_event_func("INFO", f"<TASK>Finding images for '{image_query[:50]}'</TASK>")
             if web_event:
                 yield web_event
             elapsed = time.time() - start_time
             if elapsed > 10:
-                web_event = emit_event_func("INFO", f"<TASK>Taking a bit of time... just a minute</TASK>")
+                web_event = emit_event_func("INFO", f"<TASK>Still searching images… hang on</TASK>")
                 if web_event:
                     yield web_event
-            image_query = function_args.get("image_query")
             max_images = function_args.get("max_images", MAX_IMAGES_TO_INCLUDE)
             search_results_raw = await imageSearch(image_query, max_images=max_images)
             logger.info(f"Image search for '{image_query[:LOG_MESSAGE_QUERY_TRUNCATE]}...' completed.")
@@ -249,7 +265,7 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
 
         elif function_name == "youtubeMetadata":
             url = function_args.get("url")
-            web_event = emit_event_func("INFO", f"<TASK>Fetching YouTube Metadata</TASK>")
+            web_event = emit_event_func("INFO", f"<TASK>Fetching YouTube info: {_display_url(url)}</TASK>")
             if web_event:
                 yield web_event
             metadata = await youtubeMetadata(url)
@@ -259,7 +275,8 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
 
         elif function_name == "transcribe_audio":
             logger.info("Getting YouTube transcript")
-            web_event = emit_event_func("INFO", "<TASK>Processing Video, This will take a minute</TASK>")
+            _yt_url = function_args.get("url", "")
+            web_event = emit_event_func("INFO", f"<TASK>Transcribing video: {_display_url(_yt_url)}</TASK>")
             if web_event:
                 yield web_event
             try:
@@ -277,11 +294,11 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                 yield f"[ERROR] Failed to transcribe: {str(e)[:ERROR_MESSAGE_TRUNCATE]}"
 
         elif function_name == "fetch_full_text":
-            logger.info("Fetching webpage content")
-            web_event = emit_event_func("INFO", "<TASK>Reading Webpage</TASK>")
+            url = function_args.get("url")
+            logger.info(f"Fetching webpage content: {url[:60]}")
+            web_event = emit_event_func("INFO", f"<TASK>Reading {_display_url(url)}</TASK>")
             if web_event:
                 yield web_event
-            url = function_args.get("url")
             
             from ragService.cacheCoordinator import CacheCoordinator
             from pipeline.queryDecomposition import QueryAnalyzer

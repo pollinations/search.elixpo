@@ -733,7 +733,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             if fetch_calls:
                 logger.info(f"Executing {len(fetch_calls)} fetch_full_text calls in PARALLEL")
                 if event_id:
-                    yield format_sse("INFO", get_user_message("fetching"))
+                    yield format_sse("INFO", f"<TASK>Reading {len(fetch_calls)} sources</TASK>")
                 
                 async def execute_fetch(idx, tool_call):
                     function_name = tool_call["function"]["name"]
