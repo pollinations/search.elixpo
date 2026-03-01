@@ -912,7 +912,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                                 if isinstance(r, Exception) or not r.get("content"):
                                     continue
                                 content = str(r["content"])
-                                if len(content) >= _FETCH_MIN_USEFUL_CHARS:
+                                if len(content) >= FETCH_MIN_USEFUL_CHARS:
                                     tool_outputs.append({
                                         "role": "tool",
                                         "tool_call_id": "retry-fetch",
