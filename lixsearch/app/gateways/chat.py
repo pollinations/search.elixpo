@@ -168,11 +168,13 @@ async def chat_completions(session_id: str, pipeline_initialized: bool):
         else:
             response_content = ""
             async for chunk in chat_engine.generate_contextual_response(session_id, user_message):
-                if chunk.startswith("event: final"):
+                if "event: RESPONSE" in chunk:
                     lines = chunk.split('\n')
                     for line in lines:
                         if line.startswith("data:"):
-                            response_content = line.replace("data:", "").strip()
+                            response_content += line.replace("data:", "").strip() + "\n"
+                elif "event: info" in chunk and "DONE" in chunk:
+                    break
 
             return jsonify({
                 "id": f"chatcmpl-{str(uuid.uuid4())[:X_REQ_ID_SLICE_SIZE]}",

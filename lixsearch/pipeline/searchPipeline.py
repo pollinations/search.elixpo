@@ -22,7 +22,7 @@ if __name__ == "__main__":
         answer = None
         try:
             async for event_chunk in async_generator:
-                if event_chunk and "event: final" in event_chunk:
+                if event_chunk and "event: RESPONSE" in event_chunk:
                     lines = event_chunk.split('\n')
                     for line in lines:
                         if line.startswith('data: '):
@@ -30,15 +30,8 @@ if __name__ == "__main__":
                                 answer = line[6:]
                             else:
                                 answer += line[6:]
+                elif event_chunk and "event: INFO" in event_chunk and "DONE" in event_chunk:
                     break
-                elif event_chunk and "event: final-part" in event_chunk:
-                    lines = event_chunk.split('\n')
-                    for line in lines:
-                        if line.startswith('data: '):
-                            if answer is None:
-                                answer = line[6:]
-                            else:
-                                answer += line[6:]
         except Exception as e:
             logger.error(f"Error during async generator iteration: {e}", exc_info=True)
             answer = "Failed to get answer due to an error."

@@ -76,7 +76,8 @@ class ChatEngine:
             )
             
             yield self._format_sse("info", "<TASK>SUCCESS</TASK>")
-            yield self._format_sse("final", assistant_response)
+            yield self._format_sse("RESPONSE", assistant_response)
+            yield self._format_sse("info", "<TASK>DONE</TASK>")
             
             logger.info(f"[Chat {session_id}] Response generated")
         

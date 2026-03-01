@@ -21,7 +21,8 @@ from pipeline.config import (POLLINATIONS_ENDPOINT, LLM_MODEL,
                              MIN_LINKS_TO_TAKE, MAX_LINKS_TO_TAKE,
                              MIN_LINKS_TO_TAKE_DETAILED, MAX_LINKS_TO_TAKE_DETAILED,
                              LLM_MAX_TOKENS, LLM_MAX_TOKENS_DETAILED,
-                             SEARCH_MAX_RESULTS, SEARCH_MAX_RESULTS_DETAILED, RETRIEVAL_TOP_K)
+                             SEARCH_MAX_RESULTS, SEARCH_MAX_RESULTS_DETAILED, RETRIEVAL_TOP_K,
+                             TOPIC_DECOMPOSITION_MAX_PARTS, TOPIC_DECOMPOSITION_TIMEOUT)
 from pipeline.instruction import system_instruction, user_instruction, synthesis_instruction
 from pipeline.optimized_tool_execution import optimized_tool_execution
 from pipeline.utils import format_sse, get_model_server
@@ -135,6 +136,115 @@ def _decompose_query(query: str) -> list[str]:
                 return questions
     
     return [query]
+
+
+async def _decompose_query_with_llm(query: str, headers: dict, max_parts: int = TOPIC_DECOMPOSITION_MAX_PARTS) -> list[str]:
+    """Use LLM to decompose a complex query into sub-topics for focused synthesis."""
+    decomposition_prompt = [
+        {
+            "role": "system",
+            "content": (
+                f"You are a query decomposition engine. Break the following query into "
+                f"2 to {max_parts} focused sub-topics for comprehensive research. "
+                f"Return ONLY a JSON array of strings, each being a focused sub-question. "
+                f'Example: ["What is X?", "How does X compare to Y?", "Recent developments in X"]'
+            )
+        },
+        {
+            "role": "user",
+            "content": query
+        }
+    ]
+
+    payload = {
+        "model": MODEL,
+        "messages": decomposition_prompt,
+        "seed": random.randint(1000, 9999),
+        "max_tokens": 500,
+        "stream": False,
+    }
+
+    try:
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                requests.post,
+                POLLINATIONS_ENDPOINT,
+                json=payload,
+                headers=headers,
+                timeout=20
+            ),
+            timeout=float(TOPIC_DECOMPOSITION_TIMEOUT)
+        )
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"].strip()
+
+        # Handle markdown code block wrapping
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+            content = content.strip()
+
+        parts = json.loads(content)
+        if isinstance(parts, list) and all(isinstance(p, str) for p in parts):
+            valid = [p.strip() for p in parts if 10 <= len(p.strip()) <= 200]
+            if valid:
+                logger.info(f"[DECOMPOSITION] LLM decomposed query into {len(valid)} sub-topics")
+                return valid[:max_parts]
+    except Exception as e:
+        logger.warning(f"[DECOMPOSITION] LLM decomposition failed: {e}")
+
+    return [query]
+
+
+async def _synthesize_subtopic(
+    subtopic: str,
+    original_query: str,
+    messages_context: list,
+    headers: dict,
+    max_tokens: int,
+    rag_context: str = "",
+) -> str:
+    """Synthesize a focused response for a single sub-topic."""
+    synthesis_messages = messages_context[:2]  # system + user base
+
+    focused_prompt = {
+        "role": "user",
+        "content": (
+            f"Focus specifically on this aspect of the query '{original_query}':\n\n"
+            f"Sub-topic: {subtopic}\n\n"
+            f"Provide a focused, detailed response for this specific aspect. "
+            f"Use markdown formatting with \\n for line breaks. "
+            f"Do not repeat information that would belong to other sub-topics. "
+            f"Be thorough but concise for this specific angle.\n"
+            f"NEVER mention internal tool names, function calls, or cache operations."
+        )
+    }
+    synthesis_messages.append(focused_prompt)
+
+    payload = {
+        "model": MODEL,
+        "messages": synthesis_messages,
+        "seed": random.randint(1000, 9999),
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+
+    response = await asyncio.wait_for(
+        asyncio.to_thread(
+            requests.post,
+            POLLINATIONS_ENDPOINT,
+            json=payload,
+            headers=headers,
+            timeout=20
+        ),
+        timeout=22.0
+    )
+    response.raise_for_status()
+    data = response.json()
+    content = data["choices"][0]["message"]["content"].strip()
+    return content
 
 
 def _looks_like_internal_reasoning(content: str) -> bool:
@@ -736,20 +846,110 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 for i, component in enumerate(query_components, 1):
                     logger.info(f"[SYNTHESIS] Component {i}: {component[:LOG_MESSAGE_PREVIEW_TRUNCATE]}")
                 logger.info(f"[SYNTHESIS] Synthesizing {len(collected_sources)} total sources across {len(query_components)} components")
-            
+
+            # ── DETAILED MODE: topic decomposition + per-subtopic synthesis ──
+            if is_detailed_mode:
+                if event_id:
+                    yield format_sse("INFO", "<TASK>Decomposing topic</TASK>")
+
+                subtopics = await _decompose_query_with_llm(user_query, headers, max_parts=TOPIC_DECOMPOSITION_MAX_PARTS)
+                logger.info(f"[SYNTHESIS] Decomposed into {len(subtopics)} sub-topics: {subtopics}")
+
+                original_msg_count = len(messages)
+                if len(messages) > 6:
+                    messages = messages[:2] + messages[-4:]
+                    logger.info(f"[SYNTHESIS] Trimmed messages from {original_msg_count} to {len(messages)}")
+
+                all_subtopic_responses = []
+                per_part_tokens = max(800, active_max_tokens // len(subtopics))
+
+                for idx, subtopic in enumerate(subtopics, 1):
+                    if event_id:
+                        yield format_sse("INFO", f"<TASK>Researching part {idx} of {len(subtopics)}</TASK>")
+
+                    try:
+                        subtopic_response = await _synthesize_subtopic(
+                            subtopic=subtopic,
+                            original_query=user_query,
+                            messages_context=messages,
+                            headers=headers,
+                            max_tokens=per_part_tokens,
+                            rag_context=rag_context,
+                        )
+
+                        if subtopic_response:
+                            subtopic_response = await sanitize_final_response(subtopic_response, subtopic, collected_sources)
+                            subtopic_response = _scrub_tool_names(subtopic_response)
+                            all_subtopic_responses.append(subtopic_response)
+
+                            # Last sub-topic: attach sources
+                            if idx == len(subtopics) and collected_sources:
+                                source_block = "\n\n---\n**Sources:**\n"
+                                unique_sources = sorted(list(set(collected_sources)))[:5]
+                                for si, src in enumerate(unique_sources):
+                                    source_block += f"{si+1}. [{src}]({src})\n"
+                                subtopic_response += source_block
+
+                            if event_id:
+                                yield format_sse("RESPONSE", subtopic_response)
+                            else:
+                                yield subtopic_response
+
+                    except Exception as e:
+                        logger.error(f"[SYNTHESIS] Sub-topic {idx} failed: {e}")
+
+                # Combine for caching
+                final_message_content = "\n\n".join(all_subtopic_responses) if all_subtopic_responses else None
+                if final_message_content:
+                    try:
+                        cache_metadata = {
+                            "sources": collected_sources[:5],
+                            "tool_calls": tool_call_count,
+                            "iteration": current_iteration,
+                            "had_cache_hit": memoized_results.get("cache_hit", False),
+                            "decomposed": True,
+                        }
+                        _cache_embedding = None
+                        if core_service:
+                            try:
+                                _cache_embedding = core_service.embed_single_text(user_query)
+                            except Exception:
+                                pass
+                        conversation_cache.add_to_cache(
+                            query=user_query,
+                            response=final_message_content,
+                            metadata=cache_metadata,
+                            query_embedding=_cache_embedding,
+                        )
+                    except Exception as e:
+                        logger.warning(f"[Pipeline] Failed to save decomposed response to cache: {e}")
+
+                    if session_context:
+                        try:
+                            session_context.add_message(role="assistant", content=final_message_content)
+                        except Exception as e:
+                            logger.warning(f"[Pipeline] Failed to store decomposed reply in hybrid cache: {e}")
+
+                    memoized_results["final_response"] = final_message_content
+
+                if event_id:
+                    yield format_sse("INFO", "<TASK>DONE</TASK>")
+                return
+
+            # ── STANDARD MODE: single-shot synthesis ──
             logger.info("[SYNTHESIS] Starting synthesis of gathered information")
             synthesis_prompt = {
                 "role": "user",
                 "content": synthesis_instruction(user_query, image_context=image_context_provided, is_detailed=is_detailed_mode)
             }
-            
+
             original_msg_count = len(messages)
             if len(messages) > 6:
                 messages = messages[:2] + messages[-4:]
                 logger.info(f"[SYNTHESIS] Trimmed messages from {original_msg_count} to {len(messages)}")
             else:
                 logger.info(f"[SYNTHESIS] Messages count: {len(messages)} (no trim needed)")
-            
+
             messages.append(synthesis_prompt)
             payload = {
                 "model": MODEL,
@@ -779,19 +979,19 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     logger.debug(f"[SYNTHESIS] Message keys: {message.keys()}")
                     logger.debug(f"[SYNTHESIS] Content value: {repr(message.get('content'))}")
                     logger.debug(f"[SYNTHESIS] Tool calls: {message.get('tool_calls')}")
-                    
+
                     final_message_content = message.get("content", "").strip()
-                    
+
                     if not final_message_content and "reasoning_content" in message:
                         final_message_content = message.get("reasoning_content", "").strip()
                         logger.info("[SYNTHESIS] Using reasoning_content as fallback")
-                    
+
                     if not final_message_content and message.get("tool_calls"):
                         logger.warning(f"[SYNTHESIS] Model returned tool_calls instead of content in synthesis")
                         final_message_content = f"I searched for information about '{user_query}' and gathered {len(collected_sources)} relevant sources."
                         if collected_sources:
                             final_message_content += f"\n\nKey sources:\n" + "\n".join([f"- {src}" for src in collected_sources[:5]])
-                    
+
                     if not final_message_content:
                         logger.error(f"[SYNTHESIS] API returned empty content after all fallbacks. Full response: {response_data}")
                         final_message_content = f"I processed your query about '{user_query}'."
@@ -957,7 +1157,8 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             
             if event_id:
                 yield format_sse("INFO", get_user_message("finalizing"))
-                yield format_sse("final", response_with_sources)
+                yield format_sse("RESPONSE", response_with_sources)
+                yield format_sse("INFO", "<TASK>DONE</TASK>")
             else:
                 yield response_with_sources
             return
@@ -988,21 +1189,21 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     chunk_size = 8000
                     for i in range(0, len(response_with_fallback), chunk_size):
                         chunk = response_with_fallback[i:i+chunk_size]
-                        event_name = "final" if i + chunk_size >= len(response_with_fallback) else "final-part"
-                        yield format_sse(event_name, chunk)
+                        yield format_sse("RESPONSE", chunk)
+                    yield format_sse("INFO", "<TASK>DONE</TASK>")
                 else:
                     yield response_with_fallback
                 return
             else:
                 if event_id:
-                    yield format_sse("INFO", get_user_message("complete"))
+                    yield format_sse("INFO", "<TASK>DONE</TASK>")
                 return
     except Exception as e:
         error_msg = str(e) if str(e) else f"Empty exception: {type(e).__name__}"
         logger.error(f"Pipeline error: {error_msg}", exc_info=True)
         logger.error(f"[DEBUG] Exception type: {type(e).__name__}, Args: {e.args}")
         if event_id:
-            yield format_sse("INFO", get_user_message("complete"))
+            yield format_sse("INFO", "<TASK>DONE</TASK>")
     finally:
         # Save assistant response to session context if available
         if session_id and "session_context" in memoized_results and memoized_results["session_context"]:

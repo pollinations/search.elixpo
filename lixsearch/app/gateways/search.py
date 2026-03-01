@@ -11,6 +11,7 @@ logger = logging.getLogger("lixsearch-api")
 
 
 def format_sse_event_openai(event_type: str, content: str, request_id: str = None) -> str:
+    is_done_signal = (event_type == "INFO" and "<TASK>DONE</TASK>" in content)
     response = {
         "id": request_id or f"chatcmpl-{uuid.uuid4().hex[:REQUEST_ID_HEX_SLICE_SIZE]}",
         "object": "chat.completion.chunk",
@@ -23,12 +24,12 @@ def format_sse_event_openai(event_type: str, content: str, request_id: str = Non
                     "role": "assistant" if event_type == "INFO" else "content",
                     "content": content
                 },
-                "finish_reason": "stop" if event_type == "final" else None
+                "finish_reason": "stop" if is_done_signal else None
             }
         ],
-        "event_type": event_type 
+        "event_type": event_type
     }
-    
+
     json_str = json.dumps(response, ensure_ascii=False)
     return f"data: {json_str}\n\n"
 
@@ -113,7 +114,7 @@ async def search(pipeline_initialized: bool):
                 }
             )
         else:
-            response_content = None
+            response_content = ""
             async for chunk in run_elixposearch_pipeline(
                 user_query=query,
                 user_image=image_url,
@@ -121,7 +122,8 @@ async def search(pipeline_initialized: bool):
                 request_id=request_id,
                 session_id=session_id
             ):
-                response_content = chunk
+                if chunk:
+                    response_content = chunk  # non-streaming mode: pipeline yields raw text
 
             if not response_content:
                 logger.error(f"[{request_id}] session={session_id} No response generated")
