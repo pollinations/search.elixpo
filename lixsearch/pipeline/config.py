@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 MAX_TRANSCRIPT_WORD_COUNT = 3000
 MAX_TOTAL_SCRAPE_WORD_COUNT = 3000
@@ -118,8 +121,8 @@ CONNECTION_POOL_TIMEOUT = 10.0
 CONNECTION_POOL_ENABLE = True
 
 REDIS_ENABLED = True
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "9530"))
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = int(os.getenv("REDIS_PORT"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD") or None
 REDIS_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0" if REDIS_PASSWORD else f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 REDIS_SOCKET_CONNECT_TIMEOUT = 5
@@ -128,13 +131,6 @@ REDIS_KEY_PREFIX = "elixpo"
 
 
 def create_redis_client(host=None, port=None, db=0, **kwargs):
-    """Create a Redis client with automatic password fallback.
-
-    Tries connecting with REDIS_PASSWORD first.  If the server has no
-    password configured it returns AUTH-error; we then retry without a
-    password so the same code works both in Docker (password) and locally
-    (no password).
-    """
     import redis as _redis
 
     host = host or REDIS_HOST
@@ -150,16 +146,14 @@ def create_redis_client(host=None, port=None, db=0, **kwargs):
         **kwargs,
     )
 
-    # Attempt with password first
     if REDIS_PASSWORD:
         try:
             client = _redis.Redis(password=REDIS_PASSWORD, **common)
             client.ping()
             return client
         except _redis.exceptions.AuthenticationError:
-            pass  # server has no password — fall through
+            pass  
 
-    # No password or password not needed
     client = _redis.Redis(password=None, **common)
     client.ping()
     return client
@@ -196,9 +190,9 @@ SESSION_LRU_EVICT_AFTER_MINUTES = 30
 HYBRID_HOT_WINDOW_SIZE = 20                 
 HYBRID_STARTUP_CLEANUP = True               
 
-IPC_HOST = os.getenv("IPC_HOST", "localhost")
-IPC_PORT = int(os.getenv("IPC_PORT", "9510"))
-_IPC_AUTHKEY = os.getenv("IPC_AUTHKEY", "ipcService")
+IPC_HOST = os.getenv("IPC_HOST")
+IPC_PORT = int(os.getenv("IPC_PORT"))
+_IPC_AUTHKEY = os.getenv("IPC_AUTHKEY")
 IPC_AUTHKEY = _IPC_AUTHKEY.encode() if isinstance(_IPC_AUTHKEY, str) else _IPC_AUTHKEY
 IPC_TIMEOUT = 30
 
