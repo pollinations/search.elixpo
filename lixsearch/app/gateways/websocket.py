@@ -1,4 +1,3 @@
-"""WebSocket gateway."""
 import logging
 import uuid
 from quart import websocket
@@ -10,7 +9,6 @@ logger = logging.getLogger("lixsearch-api")
 
 
 async def websocket_search():
-    """WebSocket search endpoint."""
     request_id = str(uuid.uuid4())[:X_REQ_ID_SLICE_SIZE]
     logger.info(f"[{request_id}] WebSocket connection established")
 
