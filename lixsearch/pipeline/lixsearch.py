@@ -11,45 +11,7 @@ from sessions.conversation_cache import ConversationCacheManager
 
 import os 
 from dotenv import load_dotenv
-from pipeline.config import (
-    ERROR_MESSAGE_TRUNCATE,
-    MIN_LINKS_TO_TAKE_DETAILED,
-    MAX_LINKS_TO_TAKE_DETAILED,
-    LLM_MAX_TOKENS_DETAILED,
-    MIN_LINKS_TO_TAKE,
-    MAX_LINKS_TO_TAKE,
-    LLM_MAX_TOKENS,
-    CACHE_WINDOW_SIZE,
-    CACHE_MAX_ENTRIES,
-    CACHE_TTL_SECONDS,
-    CACHE_COMPRESSION_METHOD,
-    CACHE_EMBEDDING_MODEL,
-    CACHE_SIMILARITY_THRESHOLD,
-    CONVERSATION_CACHE_DIR,
-    POLLINATIONS_ENDPOINT,
-    LLM_MODEL,
-    RETRIEVAL_TOP_K,
-    SEMANTIC_CACHE_TTL_SECONDS,
-    SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
-    SEMANTIC_CACHE_REDIS_HOST,
-    SEMANTIC_CACHE_REDIS_PORT,
-    SEMANTIC_CACHE_REDIS_DB,
-    TOPIC_DECOMPOSITION_MAX_PARTS,
-    TOPIC_DECOMPOSITION_TIMEOUT,
-    FETCH_MIN_USEFUL_CHARS,
-    LOG_MESSAGE_QUERY_TRUNCATE,
-    LOG_MESSAGE_PREVIEW_TRUNCATE,
-    SEARCH_DEPTH_BOUNDS,
-    DEEP_SEARCH_MAX_SUB_QUERIES,
-    DEEP_SEARCH_MAX_ITERATIONS_PER_SUB,
-    DEEP_SEARCH_MAX_TOKENS_PER_SUB,
-    DEEP_SEARCH_FINAL_SYNTHESIS_MAX_TOKENS,
-    DEEP_SEARCH_MIN_LINKS_PER_SUB,
-    DEEP_SEARCH_MAX_LINKS_PER_SUB,
-    DEEP_SEARCH_TIMEOUT_PER_SUB,
-    DEEP_SEARCH_GATING_MIN_COMPLEXITY,
-)
-
+from pipeline.config import *
 from pipeline.instruction import system_instruction
 from pipeline.instruction import user_instruction
 from pipeline.instruction import synthesis_instruction
@@ -68,31 +30,10 @@ POLLINATIONS_TOKEN = os.getenv("TOKEN")
 MODEL = LLM_MODEL
 logger.debug(f"Model configured: {MODEL}")
 
-INTERNAL_LEAK_PATTERNS = [
-    r"\bthe user wants to know\b",
-    r"\bi should\b",
-    r"\blet me\b",
-    r"\bfirst priority\b",
-    r"\bquery_conversation_cache\b",
-    r"\btool(?:s)?\b.*\b(use|call|execute)\b",
-]
-
-# Function/tool names that must never appear in user-facing output
-_LEAKED_TOOL_RE = re.compile(
-    r"(?:Functions?\.)?"
-    r"(?:web_search|fetch_full_text|query_conversation_cache|get_session_conversation_history|"
-    r"cleanQuery|transcribe_audio|generate_prompt_from_image|replyFromImage|image_search|"
-    r"youtubeMetadata|get_local_time|create_image|optimized_tool_execution|"
-    r"memoized_results|semantic_cache|cache_hit|cache_miss)"
-    r"(?::\d+)?",
-    re.IGNORECASE,
-)
-
 def _scrub_tool_names(text: str) -> str:
-    """Remove any leaked internal tool/function names from final output."""
     if not text:
         return text
-    return _LEAKED_TOOL_RE.sub("", text).strip()
+    return LEAKED_TOOL_RE.sub("", text).strip()
 
 USER_FRIENDLY_MESSAGES = {
     "processing": [
@@ -151,7 +92,6 @@ def get_user_message(operation: str) -> str:
         return "<TASK>Processing</TASK>"
     return random.choice(variants)
 
-
 def _decompose_query(query: str) -> list[str]:
     if not query or len(query) < 50:
         return [query]
@@ -171,9 +111,7 @@ def _decompose_query(query: str) -> list[str]:
     
     return [query]
 
-
 async def _decompose_query_with_llm(query: str, headers: dict, max_parts: int = TOPIC_DECOMPOSITION_MAX_PARTS) -> list[str]:
-    """Use LLM to decompose a complex query into sub-topics for focused synthesis."""
     decomposition_prompt = [
         {
             "role": "system",
@@ -213,7 +151,6 @@ async def _decompose_query_with_llm(query: str, headers: dict, max_parts: int = 
         data = response.json()
         content = data["choices"][0]["message"]["content"].strip()
 
-        # Handle markdown code block wrapping
         if content.startswith("```"):
             content = content.split("```")[1]
             if content.startswith("json"):
@@ -231,11 +168,7 @@ async def _decompose_query_with_llm(query: str, headers: dict, max_parts: int = 
 
     return [query]
 
-
-# ── DEEP SEARCH FUNCTIONS ──
-
 async def _evaluate_deep_search_need(query: str, headers: dict) -> bool:
-    """Use LLM to determine if a query actually warrants deep search."""
     gating_messages = [
         {"role": "system", "content": "You are a query complexity evaluator. Return only JSON."},
         {"role": "user", "content": deep_search_gating_instruction(query)},
@@ -272,8 +205,7 @@ async def _evaluate_deep_search_need(query: str, headers: dict) -> bool:
         return bool(needs)
     except Exception as e:
         logger.warning(f"[DeepSearch] Gating LLM call failed ({e}), defaulting to complexity heuristic")
-        return None  # Signal to use heuristic fallback
-
+        return None
 
 async def _execute_deep_search_sub_query(
     sub_query: str,
@@ -286,14 +218,9 @@ async def _execute_deep_search_sub_query(
     core_service,
     current_utc_time,
 ):
-    """
-    Execute a full search-fetch-synthesize cycle for a single deep search sub-query.
-    Returns (response_text, sources_list, image_urls_list).
-    """
     collected_sources = []
     collected_images = []
 
-    # RAG context for this sub-query
     rag_context = ""
     if core_service:
         try:
@@ -323,11 +250,9 @@ async def _execute_deep_search_sub_query(
     tool_call_count = 0
 
     for iteration in range(1, DEEP_SEARCH_MAX_ITERATIONS_PER_SUB + 1):
-        # Trim messages to prevent context overflow
         if len(messages) > 8:
             messages = messages[:2] + messages[-6:]
 
-        # Ensure assistant messages have content
         for m in messages:
             if m.get("role") == "assistant" and not m.get("content"):
                 if m.get("tool_calls"):
@@ -391,11 +316,9 @@ async def _execute_deep_search_sub_query(
             else:
                 other_calls.append(tc)
 
-        # Cap fetches per sub-query
         fetch_calls = fetch_calls[:DEEP_SEARCH_MAX_LINKS_PER_SUB]
         tool_call_count += len(tool_calls)
 
-        # Execute web searches in parallel
         if web_search_calls:
             async def _exec_ws(idx, tc):
                 fn_name = tc["function"]["name"]
@@ -424,7 +347,6 @@ async def _execute_deep_search_sub_query(
                         "content": str(r["result"]) if r["result"] else "No result",
                     })
 
-        # Execute other tools sequentially
         for tc in other_calls:
             fn_name = tc["function"]["name"]
             fn_args = json.loads(tc["function"]["arguments"])
@@ -447,7 +369,6 @@ async def _execute_deep_search_sub_query(
                 "content": str(tool_result) if tool_result else "No result",
             })
 
-        # Execute fetches in parallel
         if fetch_calls:
             async def _exec_fetch(idx, tc):
                 fn_name = tc["function"]["name"]
@@ -487,7 +408,6 @@ async def _execute_deep_search_sub_query(
 
         messages.extend(tool_outputs)
 
-    # Force synthesis if iterations exhausted without final content
     if not final_content:
         logger.info(f"[DeepSearch:Sub{sub_query_index}] Forcing synthesis after {DEEP_SEARCH_MAX_ITERATIONS_PER_SUB} iterations")
         synthesis_messages = messages[:2] + messages[-4:] if len(messages) > 6 else messages
@@ -524,13 +444,11 @@ async def _execute_deep_search_sub_query(
     )
     return final_content or "", collected_sources, collected_images
 
-
 async def _deep_search_final_synthesis(
     original_query: str,
     sub_results: list,
     headers: dict,
 ) -> str:
-    """Combine all sub-query results into a single cohesive answer."""
     messages = [
         {
             "role": "system",
@@ -568,7 +486,6 @@ async def _deep_search_final_synthesis(
     response.raise_for_status()
     return response.json()["choices"][0]["message"].get("content", "").strip()
 
-
 async def _run_deep_search_pipeline(
     user_query: str,
     user_image: str,
@@ -576,12 +493,6 @@ async def _run_deep_search_pipeline(
     session_id: str,
     emit_event,
 ):
-    """
-    Deep Search pipeline: decomposes query into sub-queries and runs
-    a full tool-execution loop for each sub-query independently.
-
-    Yields SSE events progressively (INFO for progress, RESPONSE for content).
-    """
     logger.info(f"[DeepSearch] Starting deep search for: '{user_query[:80]}'")
 
     current_utc_time = datetime.now(timezone.utc)
@@ -590,7 +501,6 @@ async def _run_deep_search_pipeline(
         "Authorization": f"Bearer {POLLINATIONS_TOKEN}",
     }
 
-    # Core embedding service
     core_service = None
     try:
         from ipcService.coreServiceManager import get_core_embedding_service
@@ -598,7 +508,6 @@ async def _run_deep_search_pipeline(
     except Exception as e:
         logger.warning(f"[DeepSearch] IPC CoreEmbeddingService unavailable: {e}")
 
-    # Session context
     session_context = None
     if session_id:
         try:
@@ -607,7 +516,6 @@ async def _run_deep_search_pipeline(
         except Exception as e:
             logger.warning(f"[DeepSearch] SessionContextWindow init failed: {e}")
 
-    # Shared memoized_results across all sub-queries
     memoized_results = {
         "timezone_info": {},
         "web_searches": {},
@@ -622,7 +530,6 @@ async def _run_deep_search_pipeline(
         "generated_images": [],
     }
 
-    # Conversation cache
     conversation_cache = ConversationCacheManager(
         window_size=CACHE_WINDOW_SIZE,
         max_entries=CACHE_MAX_ENTRIES,
@@ -639,7 +546,6 @@ async def _run_deep_search_pipeline(
         except Exception as e:
             logger.warning(f"[DeepSearch] Failed to load conversation cache: {e}")
 
-    # Semantic cache
     semantic_cache = None
     try:
         semantic_cache = SemanticCache(
@@ -655,7 +561,6 @@ async def _run_deep_search_pipeline(
     except Exception as e:
         logger.warning(f"[DeepSearch] Semantic cache init failed: {e}")
 
-    # ── STEP 1: DECOMPOSE QUERY ──
     decompose_event = emit_event("INFO", "<TASK>Analyzing query for deep search</TASK>")
     if decompose_event:
         yield decompose_event
@@ -665,7 +570,6 @@ async def _run_deep_search_pipeline(
     )
     logger.info(f"[DeepSearch] Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
 
-    # Fallback: if LLM decomposition returned just the original query, try aspect-based
     if len(sub_queries) <= 1:
         from pipeline.queryDecomposition import QueryAnalyzer
         analyzer = QueryAnalyzer()
@@ -681,8 +585,7 @@ async def _run_deep_search_pipeline(
     if plan_event:
         yield plan_event
 
-    # ── STEP 2: EXECUTE EACH SUB-QUERY ──
-    all_sub_results = []  # [(sub_query_text, response_text, sources_list)]
+    all_sub_results = []
     all_collected_sources = []
     all_collected_images = []
 
@@ -718,7 +621,6 @@ async def _run_deep_search_pipeline(
                 all_collected_sources.extend(sq_sources)
                 all_collected_images.extend(sq_images)
 
-                # Yield progressive RESPONSE for this sub-query
                 if event_id:
                     yield format_sse("RESPONSE", sq_response)
                 else:
@@ -742,7 +644,6 @@ async def _run_deep_search_pipeline(
         except Exception as e:
             logger.error(f"[DeepSearch] Sub-query {sq_idx} failed: {e}", exc_info=True)
 
-    # ── STEP 3: FINAL SYNTHESIS ──
     if len(all_sub_results) > 1:
         synth_event = emit_event("INFO", "<TASK>Combining all research into final answer</TASK>")
         if synth_event:
@@ -758,7 +659,6 @@ async def _run_deep_search_pipeline(
             if final_response:
                 final_response = _scrub_tool_names(final_response)
 
-                # Append unified sources
                 if all_collected_sources:
                     unique_sources = sorted(set(all_collected_sources))[:8]
                     source_block = "\n\n---\n**Sources:**\n"
@@ -775,7 +675,6 @@ async def _run_deep_search_pipeline(
             logger.error(f"[DeepSearch] Final synthesis failed: {e}", exc_info=True)
 
     elif len(all_sub_results) == 1:
-        # Single sub-result: append sources if any
         _sq, _resp, _srcs = all_sub_results[0]
         if _srcs:
             unique_sources = sorted(set(_srcs))[:5]
@@ -788,7 +687,6 @@ async def _run_deep_search_pipeline(
             else:
                 yield source_response
 
-    # ── STEP 4: CACHE & CLEANUP ──
     combined_content = "\n\n".join(r[1] for r in all_sub_results) if all_sub_results else None
     if combined_content:
         memoized_results["final_response"] = combined_content
@@ -840,7 +738,6 @@ async def _run_deep_search_pipeline(
         f"{len(all_collected_sources)} total sources"
     )
 
-
 async def _synthesize_subtopic(
     subtopic: str,
     original_query: str,
@@ -849,8 +746,7 @@ async def _synthesize_subtopic(
     max_tokens: int,
     rag_context: str = "",
 ) -> str:
-    """Synthesize a focused response for a single sub-topic."""
-    synthesis_messages = messages_context[:2]  # system + user base
+    synthesis_messages = messages_context[:2]
 
     focused_prompt = {
         "role": "user",
@@ -889,14 +785,12 @@ async def _synthesize_subtopic(
     content = data["choices"][0]["message"]["content"].strip()
     return content
 
-
 def _looks_like_internal_reasoning(content: str) -> bool:
     if not content:
         return False
     probe = content[:2500].lower()
     matches = sum(1 for p in INTERNAL_LEAK_PATTERNS if re.search(p, probe))
     return matches >= 2
-
 
 def _strip_internal_lines(content: str) -> str:
     if not content:
@@ -914,17 +808,12 @@ def _strip_internal_lines(content: str) -> str:
         cleaned.append(line)
     return "\n".join(cleaned).strip()
 
-
 _FETCH_FAIL_PATTERNS = re.compile(
     r"^\[(?:TIMEOUT|ERROR|CACHED)\]|^No result$|^\[No content fetched",
     re.IGNORECASE,
 )
 
-
-
-
 def _evaluate_fetch_quality(tool_outputs: list) -> tuple[int, int]:
-    """Return (good_count, total_fetch_count) from a list of tool outputs."""
     total = 0
     good = 0
     for out in tool_outputs:
@@ -937,22 +826,7 @@ def _evaluate_fetch_quality(tool_outputs: list) -> tuple[int, int]:
         good += 1
     return good, total
 
-
 async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: str = None, session_id: str = None, deep_search: bool = False):
-    """
-    Main search pipeline with full caching and RAG support.
-
-    Args:
-        user_query: User search query
-        user_image: Optional image URL for image-based search
-        event_id: Optional event ID for SSE streaming
-        session_id: REQUIRED for cache isolation - unique session identifier
-        deep_search: If True, run deep search mode (explicit opt-in)
-
-    Note:
-        session_id is the single orchestrator for all cross-service communication,
-        cache isolation, and conversation context.
-    """
     logger.info(
         f"[pipeline] session={session_id} Starting ElixpoSearch: "
         f"query='{user_query[:LOG_MESSAGE_QUERY_TRUNCATE]}...' image={bool(user_image)} "
@@ -966,7 +840,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
     original_user_query = user_query or ""
     image_only_mode = bool(user_image and not original_user_query.strip())
 
-    # ── DEEP SEARCH GATING ──
     is_deep_search = deep_search and not image_only_mode
     if is_deep_search:
         headers = {
@@ -974,11 +847,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             "Authorization": f"Bearer {POLLINATIONS_TOKEN}",
         }
 
-        # First try LLM-based gating
         llm_verdict = await _evaluate_deep_search_need(original_user_query, headers)
 
         if llm_verdict is False:
-            # LLM says query is too simple for deep search
             logger.info(f"[DeepSearch] LLM gating DOWNGRADE: query too simple for deep search")
             is_deep_search = False
             downgrade_event = emit_event(
@@ -988,7 +859,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             if downgrade_event:
                 yield downgrade_event
         elif llm_verdict is None:
-            # LLM gating failed, fall back to heuristic
             from pipeline.queryDecomposition import QueryAnalyzer, QueryComplexity
             gate_analyzer = QueryAnalyzer()
             gate_complexity = gate_analyzer.detect_query_complexity(original_user_query)
@@ -1018,7 +888,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         else:
             logger.info(f"[DeepSearch] LLM gating PASS: proceeding with deep search")
 
-    # Delegate to deep search pipeline if gating passed
     if is_deep_search:
         async for event in _run_deep_search_pipeline(
             user_query=original_user_query,
@@ -1030,7 +899,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             yield event
         return
 
-    # Detect if user wants a detailed/comprehensive response
     _detail_keywords = re.compile(
         r"\b(detail(?:ed|s)?|comprehensive|in[- ]?depth|thorough|extensive|elaborate|full|complete|everything about|deep dive|lengthy|long)\b",
         re.IGNORECASE,
@@ -1134,7 +1002,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             "context_sufficient": False,
             "cache_hit": False,
             "cached_response": None,
-            "session_id": session_id or "",   # used by optimized_tool_execution
+            "session_id": session_id or "",
             "generated_images": [],
         }
         session_context = None
@@ -1539,7 +1407,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     except asyncio.TimeoutError:
                         logger.warning("[INGESTION] Timeout reached, continuing anyway")
 
-                # ── FETCH QUALITY CHECK & RETRY (max 1 retry) ──
                 good_fetches, total_fetches = _evaluate_fetch_quality(tool_outputs)
                 if total_fetches > 0 and good_fetches == 0 and not fetch_retry_done:
                     fetch_retry_done = True
@@ -1549,14 +1416,12 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     if event_id:
                         yield format_sse("INFO", "<TASK>Sources unavailable, retrying with new results</TASK>")
 
-                    # Fresh web search with slightly rephrased query
                     from commons.searching_based import webSearch
                     retry_query = f"{user_query} latest information"
                     retry_urls = await asyncio.to_thread(webSearch, retry_query)
                     logger.info(f"[RETRY] Fresh search returned {len(retry_urls)} URLs")
 
                     if retry_urls:
-                        # Pick URLs we haven't already tried
                         already_tried = {
                             out.get("content", "").split("\n")[0].replace("URL: ", "")
                             for out in tool_outputs if out.get("name") == "fetch_full_text"
@@ -1648,7 +1513,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     logger.info(f"[SYNTHESIS] Component {i}: {component[:LOG_MESSAGE_PREVIEW_TRUNCATE]}")
                 logger.info(f"[SYNTHESIS] Synthesizing {len(collected_sources)} total sources across {len(query_components)} components")
 
-            # ── DETAILED MODE: topic decomposition + per-subtopic synthesis ──
             if is_detailed_mode:
                 if event_id:
                     yield format_sse("INFO", "<TASK>Decomposing topic</TASK>")
@@ -1683,7 +1547,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             subtopic_response = _scrub_tool_names(subtopic_response)
                             all_subtopic_responses.append(subtopic_response)
 
-                            # Last sub-topic: attach sources
                             if idx == len(subtopics) and collected_sources:
                                 source_block = "\n\n---\n**Sources:**\n"
                                 unique_sources = sorted(list(set(collected_sources)))[:5]
@@ -1699,7 +1562,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     except Exception as e:
                         logger.error(f"[SYNTHESIS] Sub-topic {idx} failed: {e}")
 
-                # Combine for caching
                 final_message_content = "\n\n".join(all_subtopic_responses) if all_subtopic_responses else None
                 if final_message_content:
                     try:
@@ -1737,7 +1599,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     yield format_sse("INFO", "<TASK>DONE</TASK>")
                 return
 
-            # ── STANDARD MODE: single-shot synthesis ──
             logger.info("[SYNTHESIS] Starting synthesis of gathered information")
             synthesis_prompt = {
                 "role": "user",
@@ -1927,7 +1788,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     "iteration": current_iteration,
                     "had_cache_hit": memoized_results.get("cache_hit", False)
                 }
-                # Embed via IPC (model already loaded there – avoids local SentenceTransformer load)
                 _cache_embedding = None
                 if core_service:
                     try:
@@ -1945,7 +1805,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             except Exception as e:
                 logger.warning(f"[Pipeline] Failed to save to conversation cache: {e}")
 
-            # Persist assistant reply to hybrid conversation cache (disk-backed)
             if session_context:
                 try:
                     session_context.add_message(role="assistant", content=final_message_content)
@@ -1953,7 +1812,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 except Exception as e:
                     logger.warning(f"[Pipeline] Failed to store assistant reply in hybrid cache: {e}")
 
-            # Track final response for session context
             memoized_results["final_response"] = response_with_sources
             
             if event_id:
@@ -1982,7 +1840,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         response_parts.append(f"{i+1}. [{src}]({src})\n")
                 response_with_fallback = "".join(response_parts)
                 
-                # Track fallback response for session context
                 memoized_results["final_response"] = response_with_fallback
                 
                 if event_id:
@@ -2006,11 +1863,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         if event_id:
             yield format_sse("INFO", "<TASK>DONE</TASK>")
     finally:
-        # Save assistant response to session context if available
         if session_id and "session_context" in memoized_results and memoized_results["session_context"]:
             try:
                 session_context = memoized_results["session_context"]
-                # Save the final response if we generated one
                 if "final_response" in memoized_results and memoized_results["final_response"]:
                     session_context.add_message(role="assistant", content=memoized_results["final_response"])
                     logger.info(f"[Pipeline] Saved assistant response to SessionContextWindow for {session_id}")

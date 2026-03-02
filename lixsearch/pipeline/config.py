@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-
+import re
 load_dotenv()
 
 MAX_TRANSCRIPT_WORD_COUNT = 3000
@@ -34,6 +34,26 @@ SEARCH_DEPTH_BOUNDS = {
     "thorough": {"min": 4, "max": 10},
 }
 
+
+INTERNAL_LEAK_PATTERNS = [
+    r"\bthe user wants to know\b",
+    r"\bi should\b",
+    r"\blet me\b",
+    r"\bfirst priority\b",
+    r"\bquery_conversation_cache\b",
+    r"\btool(?:s)?\b.*\b(use|call|execute)\b",
+]
+
+
+LEAKED_TOOL_RE = re.compile(
+    r"(?:Functions?\.)?"
+    r"(?:web_search|fetch_full_text|query_conversation_cache|get_session_conversation_history|"
+    r"cleanQuery|transcribe_audio|generate_prompt_from_image|replyFromImage|image_search|"
+    r"youtubeMetadata|get_local_time|create_image|optimized_tool_execution|"
+    r"memoized_results|semantic_cache|cache_hit|cache_miss)"
+    r"(?::\d+)?",
+    re.IGNORECASE,
+)
 
 LLM_MODEL = "kimi"
 IMAGE_MODEL = "zimage"
