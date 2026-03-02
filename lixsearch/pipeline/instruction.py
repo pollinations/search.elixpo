@@ -193,3 +193,69 @@ ABSOLUTE RULES:
 
 Be concise, direct, skip redundancy. Use markdown. Include sources if applicable.{image_note}"""
     return synthesis_message
+
+
+def deep_search_gating_instruction(query):
+    """Prompt to evaluate whether a query warrants deep search."""
+    return f"""Evaluate whether the following query requires deep multi-step research or can be answered with a simple search.
+
+Query: "{query}"
+
+Respond with ONLY a JSON object:
+{{"needs_deep_search": true/false, "reason": "brief explanation"}}
+
+Guidelines for needs_deep_search=false (simple queries):
+- Quick facts, definitions, weather, time, prices, scores
+- Single-entity lookups ("What is X?", "Who is Y?")
+- Queries shorter than 10 words with a single clear intent
+- Simple how-to questions with one step
+
+Guidelines for needs_deep_search=true (complex queries):
+- Multi-faceted research topics requiring multiple perspectives
+- Comparison queries ("X vs Y", "differences between")
+- Queries with multiple sub-questions or aspects
+- Topics requiring analysis from different angles
+- Questions about complex processes, systems, or debates
+
+Return ONLY the JSON, nothing else."""
+
+
+def deep_search_sub_query_instruction(sub_query, original_query, sub_query_index, total_sub_queries):
+    """User instruction for a deep search sub-query execution."""
+    return f"""You are researching sub-question {sub_query_index} of {total_sub_queries} for the original query: "{original_query}"
+
+Your specific research focus: {sub_query}
+
+Guidelines:
+- Search the web thoroughly for this specific aspect
+- Fetch and read relevant sources for accurate, sourced information
+- Focus ONLY on this sub-question — do not cover other aspects of the original query
+- Use markdown formatting with \\n for line breaks
+- Target 400-800 words of focused, well-sourced content
+- Include source URLs as markdown links within your response
+- NEVER mention internal tool names, function calls, or cache operations
+- Be thorough but stay focused on this specific aspect"""
+
+
+def deep_search_final_synthesis_instruction(original_query, sub_results):
+    """Prompt for combining all deep search sub-query results into a final answer."""
+    summaries_text = ""
+    for i, (sub_q, summary, _sources) in enumerate(sub_results, 1):
+        summaries_text += f"\n### Research Finding {i}: {sub_q}\n{summary}\n"
+
+    return f"""Synthesize a comprehensive final answer for: "{original_query}"
+
+Below are the research findings from {len(sub_results)} independent research threads:
+{summaries_text}
+
+SYNTHESIS RULES:
+- Combine all findings into a single cohesive, well-structured response
+- Eliminate redundancy between sub-topic answers
+- Organize by logical flow, not by sub-question order
+- Use markdown headers (##, ###) to structure the response
+- Total length: 1500-3000 words for complex topics
+- NEVER mention "sub-query", "research thread", "research finding", or internal process details
+- Present as a single authoritative, well-researched answer
+- Use \\n for line breaks, \\n\\n for paragraph spacing
+- Format citations as [Title](URL)
+- NEVER mention internal tool names, function calls, or cache operations"""

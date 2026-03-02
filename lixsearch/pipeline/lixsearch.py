@@ -40,11 +40,24 @@ from pipeline.config import (
     LOG_MESSAGE_QUERY_TRUNCATE,
     LOG_MESSAGE_PREVIEW_TRUNCATE,
     SEARCH_DEPTH_BOUNDS,
+    DEEP_SEARCH_MAX_SUB_QUERIES,
+    DEEP_SEARCH_MAX_ITERATIONS_PER_SUB,
+    DEEP_SEARCH_MAX_TOKENS_PER_SUB,
+    DEEP_SEARCH_FINAL_SYNTHESIS_MAX_TOKENS,
+    DEEP_SEARCH_MIN_LINKS_PER_SUB,
+    DEEP_SEARCH_MAX_LINKS_PER_SUB,
+    DEEP_SEARCH_TIMEOUT_PER_SUB,
+    DEEP_SEARCH_GATING_MIN_COMPLEXITY,
 )
 
 from pipeline.instruction import system_instruction
 from pipeline.instruction import user_instruction
 from pipeline.instruction import synthesis_instruction
+from pipeline.instruction import (
+    deep_search_gating_instruction,
+    deep_search_sub_query_instruction,
+    deep_search_final_synthesis_instruction,
+)
 from pipeline.optimized_tool_execution import optimized_tool_execution
 from pipeline.utils import format_sse, get_model_server
 from functionCalls.getImagePrompt import generate_prompt_from_image
@@ -219,6 +232,615 @@ async def _decompose_query_with_llm(query: str, headers: dict, max_parts: int = 
     return [query]
 
 
+# ── DEEP SEARCH FUNCTIONS ──
+
+async def _evaluate_deep_search_need(query: str, headers: dict) -> bool:
+    """Use LLM to determine if a query actually warrants deep search."""
+    gating_messages = [
+        {"role": "system", "content": "You are a query complexity evaluator. Return only JSON."},
+        {"role": "user", "content": deep_search_gating_instruction(query)},
+    ]
+    payload = {
+        "model": MODEL,
+        "messages": gating_messages,
+        "seed": random.randint(1000, 9999),
+        "max_tokens": 200,
+        "stream": False,
+    }
+    try:
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                requests.post,
+                POLLINATIONS_ENDPOINT,
+                json=payload,
+                headers=headers,
+                timeout=15
+            ),
+            timeout=18.0
+        )
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"].strip()
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+            content = content.strip()
+        result = json.loads(content)
+        needs = result.get("needs_deep_search", True)
+        reason = result.get("reason", "")
+        logger.info(f"[DeepSearch] Gating LLM verdict: needs_deep_search={needs}, reason={reason}")
+        return bool(needs)
+    except Exception as e:
+        logger.warning(f"[DeepSearch] Gating LLM call failed ({e}), defaulting to complexity heuristic")
+        return None  # Signal to use heuristic fallback
+
+
+async def _execute_deep_search_sub_query(
+    sub_query: str,
+    original_query: str,
+    sub_query_index: int,
+    total_sub_queries: int,
+    headers: dict,
+    memoized_results: dict,
+    emit_event,
+    core_service,
+    current_utc_time,
+):
+    """
+    Execute a full search-fetch-synthesize cycle for a single deep search sub-query.
+    Returns (response_text, sources_list, image_urls_list).
+    """
+    collected_sources = []
+    collected_images = []
+
+    # RAG context for this sub-query
+    rag_context = ""
+    if core_service:
+        try:
+            retrieval_result = core_service.retrieve(sub_query, top_k=3)
+            if retrieval_result.get("count", 0) > 0:
+                rag_context = "\n".join(
+                    [r["metadata"]["text"] for r in retrieval_result.get("results", [])]
+                )
+        except Exception:
+            pass
+
+    messages = [
+        {
+            "role": "system",
+            "name": "elixposearch-agent-system",
+            "content": system_instruction(rag_context, current_utc_time, is_detailed=True),
+        },
+        {
+            "role": "user",
+            "content": deep_search_sub_query_instruction(
+                sub_query, original_query, sub_query_index, total_sub_queries
+            ),
+        },
+    ]
+
+    final_content = None
+    tool_call_count = 0
+
+    for iteration in range(1, DEEP_SEARCH_MAX_ITERATIONS_PER_SUB + 1):
+        # Trim messages to prevent context overflow
+        if len(messages) > 8:
+            messages = messages[:2] + messages[-6:]
+
+        # Ensure assistant messages have content
+        for m in messages:
+            if m.get("role") == "assistant" and not m.get("content"):
+                if m.get("tool_calls"):
+                    m["content"] = f"Executing {len(m['tool_calls'])} tool(s)..."
+                else:
+                    m["content"] = "Researching..."
+
+        payload = {
+            "model": MODEL,
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": "auto",
+            "seed": random.randint(1000, 9999),
+            "max_tokens": DEEP_SEARCH_MAX_TOKENS_PER_SUB,
+        }
+
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    requests.post,
+                    POLLINATIONS_ENDPOINT,
+                    json=payload,
+                    headers=headers,
+                    timeout=45
+                ),
+                timeout=50.0,
+            )
+            response.raise_for_status()
+            response_data = response.json()
+        except Exception as e:
+            logger.error(f"[DeepSearch:Sub{sub_query_index}] API error at iteration {iteration}: {e}")
+            break
+
+        assistant_message = response_data["choices"][0]["message"]
+        if not assistant_message.get("content"):
+            if assistant_message.get("tool_calls"):
+                assistant_message["content"] = "Gathering information..."
+            else:
+                assistant_message["content"] = "Researching..."
+
+        messages.append(assistant_message)
+        tool_calls = assistant_message.get("tool_calls")
+
+        if not tool_calls:
+            final_content = assistant_message.get("content")
+            logger.info(f"[DeepSearch:Sub{sub_query_index}] Iteration {iteration}: no tool calls, final content ready ({len(final_content or '')} chars)")
+            break
+
+        logger.info(f"[DeepSearch:Sub{sub_query_index}] Iteration {iteration}: {len(tool_calls)} tool calls")
+        tool_outputs = []
+        fetch_calls = []
+        web_search_calls = []
+        other_calls = []
+
+        for tc in tool_calls:
+            fn_name = tc["function"]["name"]
+            if fn_name == "fetch_full_text":
+                fetch_calls.append(tc)
+            elif fn_name == "web_search":
+                web_search_calls.append(tc)
+            else:
+                other_calls.append(tc)
+
+        # Cap fetches per sub-query
+        fetch_calls = fetch_calls[:DEEP_SEARCH_MAX_LINKS_PER_SUB]
+        tool_call_count += len(tool_calls)
+
+        # Execute web searches in parallel
+        if web_search_calls:
+            async def _exec_ws(idx, tc):
+                fn_name = tc["function"]["name"]
+                fn_args = json.loads(tc["function"]["arguments"])
+                logger.info(f"[DeepSearch:Sub{sub_query_index}] WebSearch #{idx+1}: {fn_args.get('query', '')[:50]}")
+                tool_result = None
+                async for result in optimized_tool_execution(fn_name, fn_args, memoized_results, emit_event):
+                    if isinstance(result, tuple):
+                        tool_result = result[0]
+                    elif isinstance(result, str) and not result.startswith("event:"):
+                        tool_result = result
+                return {"tool_call_id": tc["id"], "name": fn_name, "result": tool_result}
+
+            ws_results = await asyncio.gather(
+                *[_exec_ws(idx, tc) for idx, tc in enumerate(web_search_calls)],
+                return_exceptions=True,
+            )
+            for r in ws_results:
+                if not isinstance(r, Exception):
+                    if "current_search_urls" in memoized_results:
+                        collected_sources.extend(memoized_results["current_search_urls"][:3])
+                    tool_outputs.append({
+                        "role": "tool",
+                        "tool_call_id": r["tool_call_id"],
+                        "name": r["name"],
+                        "content": str(r["result"]) if r["result"] else "No result",
+                    })
+
+        # Execute other tools sequentially
+        for tc in other_calls:
+            fn_name = tc["function"]["name"]
+            fn_args = json.loads(tc["function"]["arguments"])
+            logger.info(f"[DeepSearch:Sub{sub_query_index}] Tool: {fn_name}")
+            tool_result = None
+            image_urls = []
+            tool_result_gen = optimized_tool_execution(fn_name, fn_args, memoized_results, emit_event)
+            if hasattr(tool_result_gen, '__aiter__'):
+                async for result in tool_result_gen:
+                    if isinstance(result, tuple):
+                        tool_result, image_urls = result
+                    elif isinstance(result, str) and not result.startswith("event:"):
+                        tool_result = result
+            if fn_name == "image_search" and image_urls:
+                collected_images.extend(image_urls)
+            tool_outputs.append({
+                "role": "tool",
+                "tool_call_id": tc["id"],
+                "name": fn_name,
+                "content": str(tool_result) if tool_result else "No result",
+            })
+
+        # Execute fetches in parallel
+        if fetch_calls:
+            async def _exec_fetch(idx, tc):
+                fn_name = tc["function"]["name"]
+                fn_args = json.loads(tc["function"]["arguments"])
+                url = fn_args.get("url", "")
+                logger.info(f"[DeepSearch:Sub{sub_query_index}] Fetch #{idx+1}: {url[:60]}")
+                tool_result = None
+                async for result in optimized_tool_execution(fn_name, fn_args, memoized_results, emit_event):
+                    if not isinstance(result, str) or not result.startswith("event:"):
+                        tool_result = result
+                return {"tool_call_id": tc["id"], "url": url, "result": tool_result}
+
+            try:
+                fetch_results = await asyncio.wait_for(
+                    asyncio.gather(
+                        *[_exec_fetch(idx, tc) for idx, tc in enumerate(fetch_calls)],
+                        return_exceptions=True,
+                    ),
+                    timeout=8.0,
+                )
+            except (asyncio.TimeoutError, TimeoutError):
+                logger.warning(f"[DeepSearch:Sub{sub_query_index}] Fetch timeout")
+                fetch_results = []
+
+            for fr in fetch_results:
+                if isinstance(fr, Exception):
+                    continue
+                url = fr.get("url", "")
+                if url and len(collected_sources) < 6:
+                    collected_sources.append(url)
+                tool_outputs.append({
+                    "role": "tool",
+                    "tool_call_id": fr["tool_call_id"],
+                    "name": "fetch_full_text",
+                    "content": str(fr["result"])[:500] if fr["result"] else "No result",
+                })
+
+        messages.extend(tool_outputs)
+
+    # Force synthesis if iterations exhausted without final content
+    if not final_content:
+        logger.info(f"[DeepSearch:Sub{sub_query_index}] Forcing synthesis after {DEEP_SEARCH_MAX_ITERATIONS_PER_SUB} iterations")
+        synthesis_messages = messages[:2] + messages[-4:] if len(messages) > 6 else messages
+        synthesis_messages.append({
+            "role": "user",
+            "content": synthesis_instruction(sub_query, is_detailed=True),
+        })
+        try:
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(
+                    requests.post,
+                    POLLINATIONS_ENDPOINT,
+                    json={
+                        "model": MODEL,
+                        "messages": synthesis_messages,
+                        "seed": random.randint(1000, 9999),
+                        "max_tokens": DEEP_SEARCH_MAX_TOKENS_PER_SUB,
+                        "stream": False,
+                    },
+                    headers=headers,
+                    timeout=20,
+                ),
+                timeout=22.0,
+            )
+            resp.raise_for_status()
+            final_content = resp.json()["choices"][0]["message"].get("content", "").strip()
+        except Exception as e:
+            logger.error(f"[DeepSearch:Sub{sub_query_index}] Forced synthesis failed: {e}")
+            final_content = f"Research on '{sub_query}' gathered {len(collected_sources)} sources."
+
+    logger.info(
+        f"[DeepSearch:Sub{sub_query_index}] Complete: {len(final_content or '')} chars, "
+        f"{len(collected_sources)} sources, {tool_call_count} tool calls"
+    )
+    return final_content or "", collected_sources, collected_images
+
+
+async def _deep_search_final_synthesis(
+    original_query: str,
+    sub_results: list,
+    headers: dict,
+) -> str:
+    """Combine all sub-query results into a single cohesive answer."""
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are lixSearch. Combine multiple research findings into a single "
+                "comprehensive, well-structured answer. Never mention sub-queries, "
+                "research threads, or internal processes. "
+                "NEVER mention internal tool names, function calls, or cache operations."
+            ),
+        },
+        {
+            "role": "user",
+            "content": deep_search_final_synthesis_instruction(original_query, sub_results),
+        },
+    ]
+
+    payload = {
+        "model": MODEL,
+        "messages": messages,
+        "seed": random.randint(1000, 9999),
+        "max_tokens": DEEP_SEARCH_FINAL_SYNTHESIS_MAX_TOKENS,
+        "stream": False,
+    }
+
+    response = await asyncio.wait_for(
+        asyncio.to_thread(
+            requests.post,
+            POLLINATIONS_ENDPOINT,
+            json=payload,
+            headers=headers,
+            timeout=30,
+        ),
+        timeout=35.0,
+    )
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"].get("content", "").strip()
+
+
+async def _run_deep_search_pipeline(
+    user_query: str,
+    user_image: str,
+    event_id: str,
+    session_id: str,
+    emit_event,
+):
+    """
+    Deep Search pipeline: decomposes query into sub-queries and runs
+    a full tool-execution loop for each sub-query independently.
+
+    Yields SSE events progressively (INFO for progress, RESPONSE for content).
+    """
+    logger.info(f"[DeepSearch] Starting deep search for: '{user_query[:80]}'")
+
+    current_utc_time = datetime.now(timezone.utc)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {POLLINATIONS_TOKEN}",
+    }
+
+    # Core embedding service
+    core_service = None
+    try:
+        from ipcService.coreServiceManager import get_core_embedding_service
+        core_service = get_core_embedding_service()
+    except Exception as e:
+        logger.warning(f"[DeepSearch] IPC CoreEmbeddingService unavailable: {e}")
+
+    # Session context
+    session_context = None
+    if session_id:
+        try:
+            session_context = SessionContextWindow(session_id=session_id)
+            session_context.add_message(role="user", content=user_query)
+        except Exception as e:
+            logger.warning(f"[DeepSearch] SessionContextWindow init failed: {e}")
+
+    # Shared memoized_results across all sub-queries
+    memoized_results = {
+        "timezone_info": {},
+        "web_searches": {},
+        "fetched_urls": {},
+        "youtube_metadata": {},
+        "youtube_transcripts": {},
+        "base64_cache": {},
+        "context_sufficient": False,
+        "cache_hit": False,
+        "cached_response": None,
+        "session_id": session_id or "",
+        "generated_images": [],
+    }
+
+    # Conversation cache
+    conversation_cache = ConversationCacheManager(
+        window_size=CACHE_WINDOW_SIZE,
+        max_entries=CACHE_MAX_ENTRIES,
+        ttl_seconds=CACHE_TTL_SECONDS,
+        compression_method=CACHE_COMPRESSION_METHOD,
+        embedding_model=CACHE_EMBEDDING_MODEL,
+        similarity_threshold=CACHE_SIMILARITY_THRESHOLD,
+        cache_dir=CONVERSATION_CACHE_DIR,
+    )
+    memoized_results["conversation_cache"] = conversation_cache
+    if session_id:
+        try:
+            conversation_cache.load_from_disk(session_id=session_id)
+        except Exception as e:
+            logger.warning(f"[DeepSearch] Failed to load conversation cache: {e}")
+
+    # Semantic cache
+    semantic_cache = None
+    try:
+        semantic_cache = SemanticCache(
+            session_id=session_id or "pipeline",
+            ttl_seconds=SEMANTIC_CACHE_TTL_SECONDS,
+            similarity_threshold=SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
+            redis_host=SEMANTIC_CACHE_REDIS_HOST,
+            redis_port=SEMANTIC_CACHE_REDIS_PORT,
+            redis_db=SEMANTIC_CACHE_REDIS_DB,
+        )
+        if session_id:
+            semantic_cache.load_for_request(session_id)
+    except Exception as e:
+        logger.warning(f"[DeepSearch] Semantic cache init failed: {e}")
+
+    # ── STEP 1: DECOMPOSE QUERY ──
+    decompose_event = emit_event("INFO", "<TASK>Analyzing query for deep search</TASK>")
+    if decompose_event:
+        yield decompose_event
+
+    sub_queries = await _decompose_query_with_llm(
+        user_query, headers, max_parts=DEEP_SEARCH_MAX_SUB_QUERIES
+    )
+    logger.info(f"[DeepSearch] Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
+
+    # Fallback: if LLM decomposition returned just the original query, try aspect-based
+    if len(sub_queries) <= 1:
+        from pipeline.queryDecomposition import QueryAnalyzer
+        analyzer = QueryAnalyzer()
+        proposed = analyzer.propose_decomposition(user_query)
+        if len(proposed) > 1:
+            sub_queries = [sq.text for sq in proposed[:DEEP_SEARCH_MAX_SUB_QUERIES]]
+            logger.info(f"[DeepSearch] Aspect-based fallback: {len(sub_queries)} sub-queries")
+
+    plan_event = emit_event(
+        "INFO",
+        f"<TASK>Deep searching {len(sub_queries)} aspects of your question</TASK>",
+    )
+    if plan_event:
+        yield plan_event
+
+    # ── STEP 2: EXECUTE EACH SUB-QUERY ──
+    all_sub_results = []  # [(sub_query_text, response_text, sources_list)]
+    all_collected_sources = []
+    all_collected_images = []
+
+    for sq_idx, sub_query in enumerate(sub_queries, 1):
+        logger.info(f"[DeepSearch] Sub-query {sq_idx}/{len(sub_queries)}: '{sub_query[:80]}'")
+
+        sq_event = emit_event(
+            "INFO",
+            f"<TASK>Researching ({sq_idx}/{len(sub_queries)}): {sub_query[:60]}</TASK>",
+        )
+        if sq_event:
+            yield sq_event
+
+        try:
+            sq_response, sq_sources, sq_images = await asyncio.wait_for(
+                _execute_deep_search_sub_query(
+                    sub_query=sub_query,
+                    original_query=user_query,
+                    sub_query_index=sq_idx,
+                    total_sub_queries=len(sub_queries),
+                    headers=headers,
+                    memoized_results=memoized_results,
+                    emit_event=emit_event,
+                    core_service=core_service,
+                    current_utc_time=current_utc_time,
+                ),
+                timeout=float(DEEP_SEARCH_TIMEOUT_PER_SUB),
+            )
+
+            if sq_response:
+                sq_response = _scrub_tool_names(sq_response)
+                all_sub_results.append((sub_query, sq_response, sq_sources))
+                all_collected_sources.extend(sq_sources)
+                all_collected_images.extend(sq_images)
+
+                # Yield progressive RESPONSE for this sub-query
+                if event_id:
+                    yield format_sse("RESPONSE", sq_response)
+                else:
+                    yield sq_response
+
+                logger.info(
+                    f"[DeepSearch] Sub-query {sq_idx} complete: "
+                    f"{len(sq_response)} chars, {len(sq_sources)} sources"
+                )
+            else:
+                logger.warning(f"[DeepSearch] Sub-query {sq_idx} returned empty response")
+
+        except asyncio.TimeoutError:
+            logger.error(f"[DeepSearch] Sub-query {sq_idx} timed out after {DEEP_SEARCH_TIMEOUT_PER_SUB}s")
+            timeout_event = emit_event(
+                "INFO",
+                f"<TASK>Research thread {sq_idx} timed out, continuing</TASK>",
+            )
+            if timeout_event:
+                yield timeout_event
+        except Exception as e:
+            logger.error(f"[DeepSearch] Sub-query {sq_idx} failed: {e}", exc_info=True)
+
+    # ── STEP 3: FINAL SYNTHESIS ──
+    if len(all_sub_results) > 1:
+        synth_event = emit_event("INFO", "<TASK>Combining all research into final answer</TASK>")
+        if synth_event:
+            yield synth_event
+
+        try:
+            final_response = await _deep_search_final_synthesis(
+                original_query=user_query,
+                sub_results=all_sub_results,
+                headers=headers,
+            )
+
+            if final_response:
+                final_response = _scrub_tool_names(final_response)
+
+                # Append unified sources
+                if all_collected_sources:
+                    unique_sources = sorted(set(all_collected_sources))[:8]
+                    source_block = "\n\n---\n**Sources:**\n"
+                    for i, src in enumerate(unique_sources, 1):
+                        source_block += f"{i}. [{src}]({src})\n"
+                    final_response += source_block
+
+                if event_id:
+                    yield format_sse("RESPONSE", final_response)
+                else:
+                    yield final_response
+
+        except Exception as e:
+            logger.error(f"[DeepSearch] Final synthesis failed: {e}", exc_info=True)
+
+    elif len(all_sub_results) == 1:
+        # Single sub-result: append sources if any
+        _sq, _resp, _srcs = all_sub_results[0]
+        if _srcs:
+            unique_sources = sorted(set(_srcs))[:5]
+            source_block = "\n\n---\n**Sources:**\n"
+            for i, src in enumerate(unique_sources, 1):
+                source_block += f"{i}. [{src}]({src})\n"
+            source_response = _resp + source_block
+            if event_id:
+                yield format_sse("RESPONSE", source_response)
+            else:
+                yield source_response
+
+    # ── STEP 4: CACHE & CLEANUP ──
+    combined_content = "\n\n".join(r[1] for r in all_sub_results) if all_sub_results else None
+    if combined_content:
+        memoized_results["final_response"] = combined_content
+        try:
+            cache_metadata = {
+                "sources": all_collected_sources[:8],
+                "deep_search": True,
+                "sub_queries": len(all_sub_results),
+            }
+            _cache_embedding = None
+            if core_service:
+                try:
+                    _cache_embedding = core_service.embed_single_text(user_query)
+                except Exception:
+                    pass
+            conversation_cache.add_to_cache(
+                query=user_query,
+                response=combined_content,
+                metadata=cache_metadata,
+                query_embedding=_cache_embedding,
+            )
+        except Exception as e:
+            logger.warning(f"[DeepSearch] Cache save failed: {e}")
+
+        if session_context:
+            try:
+                session_context.add_message(role="assistant", content=combined_content)
+            except Exception as e:
+                logger.warning(f"[DeepSearch] Session context save failed: {e}")
+
+    if session_id and semantic_cache is not None:
+        try:
+            semantic_cache.save_for_request(session_id)
+        except Exception:
+            pass
+
+    if session_id:
+        try:
+            conversation_cache.save_to_disk(session_id=session_id)
+        except Exception:
+            pass
+
+    done_event = emit_event("INFO", "<TASK>DONE</TASK>")
+    if done_event:
+        yield done_event
+
+    logger.info(
+        f"[DeepSearch] Complete: {len(all_sub_results)} sub-queries answered, "
+        f"{len(all_collected_sources)} total sources"
+    )
+
+
 async def _synthesize_subtopic(
     subtopic: str,
     original_query: str,
@@ -316,7 +938,7 @@ def _evaluate_fetch_quality(tool_outputs: list) -> tuple[int, int]:
     return good, total
 
 
-async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: str = None, session_id: str = None):
+async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: str = None, session_id: str = None, deep_search: bool = False):
     """
     Main search pipeline with full caching and RAG support.
 
@@ -325,6 +947,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         user_image: Optional image URL for image-based search
         event_id: Optional event ID for SSE streaming
         session_id: REQUIRED for cache isolation - unique session identifier
+        deep_search: If True, run deep search mode (explicit opt-in)
 
     Note:
         session_id is the single orchestrator for all cross-service communication,
@@ -333,6 +956,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
     logger.info(
         f"[pipeline] session={session_id} Starting ElixpoSearch: "
         f"query='{user_query[:LOG_MESSAGE_QUERY_TRUNCATE]}...' image={bool(user_image)} "
+        f"deep_search={deep_search}"
     )
     def emit_event(event_type, message):
         if event_id:
@@ -341,6 +965,70 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
 
     original_user_query = user_query or ""
     image_only_mode = bool(user_image and not original_user_query.strip())
+
+    # ── DEEP SEARCH GATING ──
+    is_deep_search = deep_search and not image_only_mode
+    if is_deep_search:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {POLLINATIONS_TOKEN}",
+        }
+
+        # First try LLM-based gating
+        llm_verdict = await _evaluate_deep_search_need(original_user_query, headers)
+
+        if llm_verdict is False:
+            # LLM says query is too simple for deep search
+            logger.info(f"[DeepSearch] LLM gating DOWNGRADE: query too simple for deep search")
+            is_deep_search = False
+            downgrade_event = emit_event(
+                "INFO",
+                "<TASK>Query is straightforward — using standard search</TASK>",
+            )
+            if downgrade_event:
+                yield downgrade_event
+        elif llm_verdict is None:
+            # LLM gating failed, fall back to heuristic
+            from pipeline.queryDecomposition import QueryAnalyzer, QueryComplexity
+            gate_analyzer = QueryAnalyzer()
+            gate_complexity = gate_analyzer.detect_query_complexity(original_user_query)
+            complexity_rank = {
+                QueryComplexity.SIMPLE: 0,
+                QueryComplexity.MODERATE: 1,
+                QueryComplexity.COMPLEX: 2,
+                QueryComplexity.HIGHLY_COMPLEX: 3,
+            }
+            min_rank = complexity_rank.get(
+                QueryComplexity(DEEP_SEARCH_GATING_MIN_COMPLEXITY.lower()), 1
+            )
+            if complexity_rank.get(gate_complexity, 0) < min_rank:
+                logger.info(
+                    f"[DeepSearch] Heuristic gating DOWNGRADE: complexity={gate_complexity.value} "
+                    f"below minimum={DEEP_SEARCH_GATING_MIN_COMPLEXITY}"
+                )
+                is_deep_search = False
+                downgrade_event = emit_event(
+                    "INFO",
+                    "<TASK>Query is straightforward — using standard search</TASK>",
+                )
+                if downgrade_event:
+                    yield downgrade_event
+            else:
+                logger.info(f"[DeepSearch] Heuristic gating PASS: complexity={gate_complexity.value}")
+        else:
+            logger.info(f"[DeepSearch] LLM gating PASS: proceeding with deep search")
+
+    # Delegate to deep search pipeline if gating passed
+    if is_deep_search:
+        async for event in _run_deep_search_pipeline(
+            user_query=original_user_query,
+            user_image=user_image,
+            event_id=event_id,
+            session_id=session_id,
+            emit_event=emit_event,
+        ):
+            yield event
+        return
 
     # Detect if user wants a detailed/comprehensive response
     _detail_keywords = re.compile(
