@@ -5,7 +5,6 @@ from searching.utils import validate_url_for_fetch
 import requests
 from bs4 import BeautifulSoup
 import re
-import time
 from urllib.parse import urlparse
 
 # Multiple realistic user agents for rotation
@@ -52,7 +51,7 @@ def fetch_full_text(
     for attempt in range(max_retries):
         try:
             headers = get_realistic_headers(url, attempt)
-            response = requests.get(url, timeout=20, headers=headers, allow_redirects=True)
+            response = requests.get(url, timeout=12, headers=headers, allow_redirects=True)
             if response.status_code != 200:
                 logger.warning(f"[FETCH] Attempt {attempt + 1}/{max_retries} failed with status {response.status_code} for {url}")
                 if attempt < max_retries - 1:
@@ -101,12 +100,8 @@ def fetch_full_text(
 
         except requests.exceptions.Timeout:
             logger.warning(f"[Fetch] Attempt {attempt + 1}/{max_retries} timeout for {url}")
-            if attempt < max_retries - 1:
-                time.sleep(1)
         except requests.exceptions.RequestException as e:
             logger.warning(f"[Fetch] Attempt {attempt + 1}/{max_retries} request error for {url}: {type(e).__name__}")
-            if attempt < max_retries - 1:
-                time.sleep(1)
     
     logger.error(f"[Fetch] Failed to fetch {url} after {max_retries} retries")
     return ""

@@ -172,7 +172,7 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                 yield memoized_results["web_searches"][cache_key]
                 return
             logger.info(f"Performing optimized web search for: {search_query}")
-            tool_result = webSearch(search_query)
+            tool_result = await webSearch(search_query)
             elapsed = time.time() - start_time
             source_urls = tool_result
             memoized_results["web_searches"][cache_key] = tool_result
@@ -349,7 +349,7 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                     yield collecting_event
                 parallel_results = await asyncio.wait_for(
                     asyncio.to_thread(fetch_url_content_parallel, queries, [url]),
-                    timeout=15.0
+                    timeout=10.0
                 )
                 fetch_elapsed = time.time() - fetch_start
                 content_len = len(parallel_results) if parallel_results else 0

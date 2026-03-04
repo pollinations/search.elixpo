@@ -2,29 +2,33 @@ import re
 from loguru import logger
 from .main import _init_ipc_manager
 import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from searching.fetch_full_text import fetch_full_text
 from pipeline.config import LOG_MESSAGE_QUERY_TRUNCATE, ERROR_MESSAGE_TRUNCATE, ERROR_CONTEXT_TRUNCATE
 
 
-def webSearch(query: str):
+async def webSearch(query: str):
     initialized = _init_ipc_manager()
-    
+
     if not initialized:
         logger.warning("[Utility] IPC initialization failed - web search unavailable")
         return []
-    
-    # Get search agents from IPC
+
     try:
         from ipcService.coreServiceManager import CoreServiceManager
         manager = CoreServiceManager.get_instance()
         search_agents = manager.get_search_agents()
-        
+
         if search_agents is None:
             logger.error("[Utility] Search agents is None - IPC connection issue")
             return []
-        
+
         logger.debug(f"[Utility] Calling web_search via IPC on {type(search_agents).__name__}")
-        urls = search_agents.web_search(query)
+        loop = asyncio.get_event_loop()
+        urls = await loop.run_in_executor(
+            None,
+            lambda: search_agents.web_search(query)
+        )
         logger.debug(f"[Utility] Web search returned {len(urls) if urls else 0} results for: {query[:LOG_MESSAGE_QUERY_TRUNCATE]}")
         return urls if urls else []
     except Exception as e:
@@ -76,21 +80,34 @@ def preprocess_text(text):
     return meaningful_sentences
 
 
+def _fetch_single_url(url: str, request_id: str = None) -> str:
+    try:
+        text_content = fetch_full_text(url, request_id=request_id)
+        clean_text = str(text_content).encode('unicode_escape').decode('utf-8')
+        clean_text = clean_text.replace('\\n', ' ').replace('\\r', ' ').replace('\\t', ' ')
+        clean_text = ''.join(c for c in clean_text if c.isprintable())
+        logger.debug(f"[Utility] Fetched {len(clean_text)} chars from {url}")
+        return f"URL: {url}\n{clean_text.strip()}"
+    except Exception as e:
+        logger.error(f"[Utility] Failed fetching {url}: {e}")
+        return ""
+
+
 def fetch_url_content_parallel(queries, urls, max_workers=10, request_id: str = None) -> str:
+    if not urls:
+        return ""
+    effective_workers = min(max_workers, len(urls))
     results = []
-    for url in urls:
-        try:
-            text_content = fetch_full_text(url, request_id=request_id)
-            
-            clean_text = str(text_content).encode('unicode_escape').decode('utf-8')
-            clean_text = clean_text.replace('\\n', ' ').replace('\\r', ' ').replace('\\t', ' ')
-            clean_text = ''.join(c for c in clean_text if c.isprintable())
-            results.append(f"URL: {url}\n{clean_text.strip()}")
-            logger.debug(f"[Utility] Fetched {len(clean_text)} chars from {url}")
-        except Exception as e:
-            logger.error(f"[Utility] Failed fetching {url}: {e}")
+    with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+        future_to_url = {
+            executor.submit(_fetch_single_url, url, request_id): url
+            for url in urls
+        }
+        for future in as_completed(future_to_url):
+            result = future.result()
+            if result:
+                results.append(result)
 
     combined_text = "\n".join(results)
-    logger.info(f"[Utility] Fetched all URLs in parallel, total: {len(combined_text)} chars")
-    
+    logger.info(f"[Utility] Fetched {len(urls)} URLs in parallel ({effective_workers} workers), total: {len(combined_text)} chars")
     return combined_text

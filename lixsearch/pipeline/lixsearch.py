@@ -1140,6 +1140,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 "content": user_instruction(user_query, user_image, is_detailed=is_detailed_mode)
             }
         ]
+        force_synthesis = False
 
         while current_iteration < max_iterations:
             current_iteration += 1
@@ -1163,11 +1164,12 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             payload = {
                 "model": MODEL,
                 "messages": messages,
-                "tools": tools,
-                "tool_choice": "auto",
                 "seed": random.randint(1000, 9999),
                 "max_tokens": active_max_tokens,
             }
+            if not force_synthesis:
+                payload["tools"] = tools
+                payload["tool_choice"] = "auto"
 
             try:
                 response = await asyncio.wait_for(
@@ -1176,9 +1178,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         POLLINATIONS_ENDPOINT,
                         json=payload,
                         headers=headers,
-                        timeout=120
+                        timeout=55
                     ),
-                    timeout=125.0
+                    timeout=60.0
                 )
                 response.raise_for_status()
                 response_data = response.json()
@@ -1247,13 +1249,13 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         "role": "user",
                         "content": synthesis_instruction(user_query, image_context=image_context_provided, is_detailed=is_detailed_mode)
                     })
+                    force_synthesis = True
                     continue
 
                 final_message_content = raw_content
                 logger.info(f"[COMPLETION] No tool calls found, setting final message: {final_message_content[:LOG_MESSAGE_PREVIEW_TRUNCATE] if final_message_content else 'EMPTY'}")
                 break
             tool_outputs = []
-            print(tool_calls)
             logger.info(f"Processing {len(tool_calls)} tool call(s):")
             
             fetch_calls = []
@@ -1400,10 +1402,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             *[execute_fetch(idx, tc) for idx, tc in enumerate(fetch_calls)],
                             return_exceptions=True
                         ),
-                        timeout=8.0
+                        timeout=12.0
                     )
                 except (asyncio.TimeoutError, TimeoutError):
-                    logger.warning(f"[PARALLEL FETCH] Timeout after 8s – continuing with results collected so far")
+                    logger.warning(f"[PARALLEL FETCH] Timeout after 12s – continuing with results collected so far")
                     fetch_results = []
 
                 ingest_tasks = []
@@ -1463,7 +1465,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
 
                     from commons.searching_based import webSearch
                     retry_query = f"{user_query} latest information"
-                    retry_urls = await asyncio.to_thread(webSearch, retry_query)
+                    retry_urls = await webSearch(retry_query)
                     logger.info(f"[RETRY] Fresh search returned {len(retry_urls)} URLs")
 
                     if retry_urls:
@@ -1486,7 +1488,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                                             fetch_url_content_parallel,
                                             [user_query], [url]
                                         ),
-                                        timeout=10.0,
+                                        timeout=8.0,
                                     )
                                     return {"url": url, "content": result}
                                 except Exception as e:
@@ -1499,7 +1501,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                                         *[_retry_fetch_single(u) for u in new_urls],
                                         return_exceptions=True
                                     ),
-                                    timeout=12.0,
+                                    timeout=10.0,
                                 )
                             except (asyncio.TimeoutError, TimeoutError):
                                 logger.warning("[RETRY] Parallel retry timed out")
@@ -1540,10 +1542,13 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             logger.info("[SYNTHESIS] Re-retrieving context from vector store after ingestion...")
             try:
                 from searching.main import retrieve_from_vector_store
-                updated_rag_context = retrieve_from_vector_store(user_query, top_k=RETRIEVAL_TOP_K)
+                updated_rag_context = await asyncio.wait_for(
+                    asyncio.to_thread(retrieve_from_vector_store, user_query, top_k=RETRIEVAL_TOP_K),
+                    timeout=5.0
+                )
                 if updated_rag_context:
                     rag_context_str = "\n".join([
-                        f"- {item.get('text', '')[:200]}" 
+                        f"- {item.get('text', '')[:200]}"
                         for item in updated_rag_context if item.get('text')
                     ])
                     logger.info(f"[SYNTHESIS] Retrieved {len(updated_rag_context)} chunks after ingestion ({len(rag_context_str)} chars)")
@@ -1551,7 +1556,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         rag_context = rag_context_str
                 else:
                     logger.warning("[SYNTHESIS] No additional context retrieved from vector store")
-            except Exception as e:
+            except (asyncio.TimeoutError, Exception) as e:
                 logger.warning(f"[SYNTHESIS] Failed to re-retrieve context: {e}")
             
             query_components = memoized_results.get("query_components", [user_query])
@@ -1768,9 +1773,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             POLLINATIONS_ENDPOINT,
                             json=payload,
                             headers=headers,
-                            timeout=120
+                            timeout=55
                         ),
-                        timeout=125.0
+                        timeout=60.0
                     )
                     response.raise_for_status()
                     response_data = response.json()
