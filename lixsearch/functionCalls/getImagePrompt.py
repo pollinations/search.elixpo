@@ -6,13 +6,13 @@ import os
 import requests
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from pipeline.config import IMAGE_SEARCH_QUERY_WORDS_LIMIT, IMAGE_MODEL as CONFIG_IMAGE_MODEL
+from pipeline.config import IMAGE_SEARCH_QUERY_WORDS_LIMIT, VISION_MODEL, POLLINATIONS_ENDPOINT
 
 load_dotenv()
 
 async def generate_prompt_from_image(imgURL: str) -> str:
     imageBase64 = image_url_to_base64(imgURL)   
-    api_url = "https://gen.pollinations.ai/v1/chat/completions"
+    api_url = POLLINATIONS_ENDPOINT
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {os.getenv('TOKEN')}"
@@ -44,7 +44,7 @@ EXAMPLES OF CORRECT OUTPUT:
 NOW GENERATE ONLY THE SEARCH QUERY FOR THIS IMAGE - NO OTHER TEXT:"""
 
     data = {
-        "model": CONFIG_IMAGE_MODEL,
+        "model": VISION_MODEL,
         "messages": [
             {
                 "role": "user",
@@ -76,24 +76,14 @@ NOW GENERATE ONLY THE SEARCH QUERY FOR THIS IMAGE - NO OTHER TEXT:"""
     import re
     for pattern in meta_patterns:
         content = re.sub(pattern, "", content, flags=re.IGNORECASE).strip()
-    
-    # Remove common explanation starters
     if content.lower().startswith("the image"):
         parts = content.split(":", 1)
         if len(parts) > 1:
             content = parts[1].strip()
-    
-    # Remove quotes
     content = content.strip('"\'')
-    
-    # Split into sentences and take the first one (could be multiple sentences)
     sentences = content.split('.')[0].strip()
-    
-    # Limit to first N words for search query
     words = sentences.split()[:IMAGE_SEARCH_QUERY_WORDS_LIMIT]
     final_query = " ".join(words).strip()
-    
-    # Ensure we got actual content, not just meta-text
     if not final_query or len(final_query) < 3:
         return "image search"
     
@@ -104,7 +94,7 @@ NOW GENERATE ONLY THE SEARCH QUERY FOR THIS IMAGE - NO OTHER TEXT:"""
 
 async def replyFromImage(imgURL: str, query: str) -> str:
     imageBase64 = image_url_to_base64(imgURL)  
-    api_url = "https://gen.pollinations.ai/v1/chat/completions"
+    api_url = POLLINATIONS_ENDPOINT
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {os.getenv('TOKEN')}"
@@ -123,7 +113,7 @@ Prioritize:
 Avoid vague words. Be descriptive but concise. Don't assume, only describe what's clearly visible. If a person's face is clearly visible and recognizable, include their name."""
 
     data = {
-        "model": CONFIG_IMAGE_MODEL,
+        "model": VISION_MODEL,
         "messages": [
             {
                 "role": "system",
@@ -159,6 +149,6 @@ def image_url_to_base64(image_url):
 if __name__ == "__main__":
     async def main():
         image_url = "https://media.architecturaldigest.com/photos/66a951edce728792a48166e6/16:9/w_1920,c_limit/GettyImages-955441104.jpg" 
-        prompt = await generate_prompt_from_image(image_url)
+        prompt = await replyFromImage(image_url, "what is this?")
         print(prompt)
     asyncio.run(main()) 
