@@ -44,11 +44,28 @@ class lixSearch:
         self._register_lifecycle_hooks()
     
     def _setup_cors(self):
-        cors(self.app)
+        allowed_origins = [
+            "http://localhost:3000",
+            "https://search.elixpo.com",
+            "https://www.search.elixpo.com",
+        ]
+        cors(self.app, allow_origin=allowed_origins)
     
     def _setup_middleware(self):
         middleware = RequestIDMiddleware(self.app.asgi_app)
         self.app.asgi_app = middleware
+
+        internal_key = os.getenv('INTERNAL_API_KEY', '')
+
+        @self.app.before_request
+        async def verify_internal_key():
+            if request.path == '/api/health':
+                return
+            if not internal_key:
+                return
+            key = request.headers.get('X-Internal-Key', '')
+            if key != internal_key:
+                return jsonify({"error": "unauthorized"}), 401
     
     def _register_routes(self):
         async def health_check_wrapper():

@@ -1,36 +1,37 @@
 {
   "name": "elixpo-search",
-  "type": "module",
-  "version": "1.0.0",
-  "description": "Elixpo Search Frontend",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Elixpo Search - AI Search & Synthesize",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
+  },
   "dependencies": {
-    "cookie-parser": "^1.4.7",
-    "crypto": "^1.0.1",
-    "dotenv": "^17.2.1",
-    "express": "^5.1.0",
-    "lru-cache": "^11.2.2",
-    "multer": "^2.0.2",
-    "redis": "^5.8.3",
-    "sharp": "^0.34.4"
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-markdown": "^9.0.0",
+    "remark-gfm": "^4.0.0",
+    "rehype-highlight": "^7.0.0",
+    "lucide-react": "^0.400.0",
+    "@prisma/client": "^5.18.0"
   },
   "devDependencies": {
-    "@types/node": "^20.10.6",
-    "browser-sync": "^3.0.4",
-    "concurrently": "^8.2.2",
-    "connect-history-api-fallback": "^2.0.0",
-    "gulp": "^5.0.1",
-    "gulp-sourcemaps": "^3.0.0",
-    "gulp-typescript": "^6.0.0-alpha.1",
-    "http-proxy-middleware": "^2.0.6",
-    "lite-server": "^2.6.1",
-    "nodemon": "^3.1.10",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
-  },
-  "scripts": {
-    "dev": "gulp dev",
-    "build": "gulp build",
-    "serve": "gulp",
-    "clean": "rm -rf dist"
+    "typescript": "^5.5.0",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.0",
+    "autoprefixer": "^10.4.0",
+    "prisma": "^5.18.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.0"
   }
 }
