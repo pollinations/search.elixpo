@@ -74,6 +74,11 @@ USER_FRIENDLY_MESSAGES = {
         "<TASK>Creating your response</TASK>",
         "<TASK>Building the answer</TASK>",
     ],
+    "preparing": [
+        "<TASK>Preparing next step</TASK>",
+        "<TASK>Processing results</TASK>",
+        "<TASK>Reviewing gathered data</TASK>",
+    ],
     "finalizing": [
         "<TASK>Finalizing response</TASK>",
         "<TASK>Wrapping up</TASK>",
@@ -789,8 +794,17 @@ def _looks_like_internal_reasoning(content: str) -> bool:
     if not content:
         return False
     probe = content[:2500].lower()
-    matches = sum(1 for p in INTERNAL_LEAK_PATTERNS if re.search(p, probe))
-    return matches >= 2
+    matches = sum(1 for p in INTERNAL_LEAK_PATTERNS if re.search(p, probe, re.MULTILINE))
+    if matches >= 2:
+        return True
+    first_line = content.strip().split("\n")[0].lower()
+    strong_starts = (
+        "the user wants", "the user is asking", "i should", "i need to",
+        "let me", "based on the", "step 1", "first,",
+    )
+    if any(first_line.startswith(s) for s in strong_starts):
+        return True
+    return False
 
 def _strip_internal_lines(content: str) -> str:
     if not content:
@@ -800,9 +814,18 @@ def _strip_internal_lines(content: str) -> str:
         low = line.strip().lower()
         if (
             low.startswith("the user wants")
+            or low.startswith("the user is asking")
             or low.startswith("i should")
+            or low.startswith("i need to")
+            or low.startswith("i will search")
+            or low.startswith("i will fetch")
+            or low.startswith("i will look")
             or low.startswith("let me")
-            or re.match(r"^\d+\.\s+(first|second|third|then|finally)\b", low)
+            or low.startswith("based on the rag")
+            or low.startswith("based on the web search")
+            or low.startswith("based on the search results")
+            or re.match(r"^\d+\.\s+(first|second|third|then|next|finally)\b", low)
+            or re.match(r"^(first,|second,|next,|finally,|step \d+)", low)
         ):
             continue
         cleaned.append(line)
@@ -1204,7 +1227,29 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             tool_calls = assistant_message.get("tool_calls")
             logger.info(f"Tool calls suggested by model: {len(tool_calls) if tool_calls else 0} tools")
             if not tool_calls:
-                final_message_content = assistant_message.get("content")
+                raw_content = assistant_message.get("content", "")
+                is_reasoning_leak = _looks_like_internal_reasoning(raw_content)
+                is_placeholder = raw_content.strip() in (
+                    "Processing your request...",
+                    "I'll help you with that. Let me gather the information you need.",
+                    "",
+                )
+                has_useful_context = bool(collected_sources) or tool_call_count > 0
+
+                if (is_reasoning_leak or is_placeholder) and has_useful_context and current_iteration < max_iterations:
+                    logger.warning(
+                        f"[COMPLETION] Iteration {current_iteration}: LLM returned reasoning/placeholder text "
+                        f"(leak={is_reasoning_leak}, placeholder={is_placeholder}). Forcing synthesis instead of using raw content."
+                    )
+                    if event_id:
+                        yield format_sse("INFO", get_user_message("synthesizing"))
+                    messages.append({
+                        "role": "user",
+                        "content": synthesis_instruction(user_query, image_context=image_context_provided, is_detailed=is_detailed_mode)
+                    })
+                    continue
+
+                final_message_content = raw_content
                 logger.info(f"[COMPLETION] No tool calls found, setting final message: {final_message_content[:LOG_MESSAGE_PREVIEW_TRUNCATE] if final_message_content else 'EMPTY'}")
                 break
             tool_outputs = []
@@ -1484,6 +1529,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
 
             messages.extend(tool_outputs)
             logger.info(f"Completed iteration {current_iteration}. Messages: {len(messages)}, Total tools: {tool_call_count}")
+            progress_event = emit_event("INFO", get_user_message("preparing"))
+            if progress_event:
+                yield progress_event
 
         if not final_message_content and current_iteration >= max_iterations:
             logger.info(f"[SYNTHESIS CONDITION MET] final_message_content={bool(final_message_content)}, current_iteration={current_iteration}, max_iterations={max_iterations}")

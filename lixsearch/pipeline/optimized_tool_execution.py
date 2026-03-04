@@ -163,20 +163,26 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
             memoized_results["search_query"] = search_query
             memoized_results["search_depth"] = search_depth
             logger.info(f"[web_search] search_depth='{search_depth}' query='{search_query}'")
-            web_event = emit_event_func("INFO", f"<TASK>Searching for '{search_query}'</TASK>")
+            web_event = emit_event_func("INFO", f"<TASK>Searching for '{search_query[:60]}'</TASK>")
             if web_event:
                 yield web_event
             cache_key = cached_web_search_key(search_query)
             if cache_key in memoized_results["web_searches"]:
                 logger.info(f"Using cached web search for: {search_query}")
                 yield memoized_results["web_searches"][cache_key]
+                return
             logger.info(f"Performing optimized web search for: {search_query}")
             tool_result = webSearch(search_query)
+            elapsed = time.time() - start_time
             source_urls = tool_result
             memoized_results["web_searches"][cache_key] = tool_result
             if "current_search_urls" not in memoized_results:
                 memoized_results["current_search_urls"] = []
             memoized_results["current_search_urls"] = source_urls
+            url_count = len(source_urls) if isinstance(source_urls, list) else 0
+            done_event = emit_event_func("INFO", f"<TASK>Found {url_count} results in {elapsed:.1f}s</TASK>")
+            if done_event:
+                yield done_event
             yield tool_result
 
         elif function_name == "generate_prompt_from_image":
@@ -288,9 +294,15 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                 result = await transcribe_audio(url, full_transcript=False, query=search_query)
                 transcript_text = f"YouTube Transcript:\n{result if result else '[No transcript available]'}"
                 memoized_results["youtube_transcripts"][url] = transcript_text
+                done_event = emit_event_func("INFO", f"<TASK>Transcription complete</TASK>")
+                if done_event:
+                    yield done_event
                 yield transcript_text
             except asyncio.TimeoutError:
                 logger.warning("Transcribe audio timed out")
+                timeout_event = emit_event_func("INFO", f"<TASK>Video transcription timed out</TASK>")
+                if timeout_event:
+                    yield timeout_event
                 yield "[TIMEOUT] Video transcription took too long"
             except Exception as e:
                 logger.error(f"Transcription error: {e}")
@@ -298,6 +310,7 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
 
         elif function_name == "fetch_full_text":
             url = function_args.get("url")
+            fetch_start = time.time()
             logger.info(f"Fetching webpage content: {url[:60]}")
             web_event = emit_event_func("INFO", f"<TASK>Reading {_display_url(url)}</TASK>")
             if web_event:
@@ -309,44 +322,50 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
             _session_id_for_cache = memoized_results.get("session_id", "pipeline")
             cache_coordinator = CacheCoordinator(session_id=_session_id_for_cache)
             cached_embedding = cache_coordinator.get_url_embedding(url)
-            
+
             search_query = memoized_results.get("search_query", "").lower()
             analyzer = QueryAnalyzer()
             detected_aspects = analyzer._detect_aspects(search_query)
-            
+
             is_ephemeral_query = "ephemeral" in detected_aspects
             is_stable_content = "stable" in detected_aspects
-            
+
             should_use_cache = cached_embedding is not None and is_stable_content and not is_ephemeral_query
-            
+
             cache_decision = "SKIP (ephemeral)" if is_ephemeral_query else ("USE (stable)" if is_stable_content else "SKIP (conservative)")
             logger.info(f"[Pipeline] Content freshness: {cache_decision} | Aspects: {detected_aspects}")
-            
+
             if should_use_cache:
                 logger.info(f"[Pipeline] URL embedding cache HIT for {url} (stable content, using 24h cache)")
                 yield f"[CACHED] Retrieved previously fetched content from {url} (24h cached)"
                 return
-            
+
             try:
                 queries = memoized_results.get("search_query", "")
                 if isinstance(queries, str):
                     queries = [queries]
+                collecting_event = emit_event_func("INFO", f"<TASK>Collecting content from {_display_url(url)}</TASK>")
+                if collecting_event:
+                    yield collecting_event
                 parallel_results = await asyncio.wait_for(
                     asyncio.to_thread(fetch_url_content_parallel, queries, [url]),
                     timeout=15.0
                 )
-                
+                fetch_elapsed = time.time() - fetch_start
+                content_len = len(parallel_results) if parallel_results else 0
+                logger.info(f"[fetch_full_text] Fetched {content_len} chars from {url[:50]} in {fetch_elapsed:.1f}s")
+
                 try:
                     from ipcService.coreServiceManager import get_core_embedding_service
                     core_service = get_core_embedding_service()
                     ingest_result = await asyncio.to_thread(core_service.ingest_url, url)
                     chunks_count = ingest_result.get('chunks_ingested', 0)
                     logger.info(f"[Pipeline] Ingested {chunks_count} chunks from {url} into vector store")
-                    
+
                     if chunks_count > 0 and is_stable_content and not is_ephemeral_query:
                         try:
                             url_embedding = await asyncio.to_thread(
-                                core_service.embed_single, 
+                                core_service.embed_single,
                                 parallel_results[:200] if parallel_results else url
                             )
                             cache_coordinator.set_url_embedding(url, url_embedding)
@@ -357,10 +376,13 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                         logger.info(f"[Pipeline] Skipping cache for ephemeral content (freshness priority)")
                 except Exception as e:
                     logger.warning(f"[Pipeline] Failed to ingest content to vector store: {e}")
-                
+
                 yield parallel_results if parallel_results else "[No content fetched from URL]"
             except asyncio.TimeoutError:
                 logger.warning(f"URL fetch timed out for {url}")
+                timeout_event = emit_event_func("INFO", f"<TASK>Source timed out, moving on</TASK>")
+                if timeout_event:
+                    yield timeout_event
                 yield f"[TIMEOUT] Fetching {url} took too long"
             except Exception as e:
                 logger.error(f"URL fetch error for {url}: {e}")

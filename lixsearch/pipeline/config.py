@@ -36,12 +36,19 @@ SEARCH_DEPTH_BOUNDS = {
 
 
 INTERNAL_LEAK_PATTERNS = [
-    r"\bthe user wants to know\b",
+    r"\bthe user wants\b",
+    r"\bthe user is asking\b",
     r"\bi should\b",
-    r"\blet me\b",
+    r"\bi need to\b",
+    r"\bi will (search|fetch|look|check|use|find|retrieve)\b",
+    r"\blet me (search|fetch|look|check|find|retrieve|get)\b",
     r"\bfirst priority\b",
+    r"\bbased on the rag\b",
+    r"\bbased on the (web search|search results|tool)\b",
     r"\bquery_conversation_cache\b",
     r"\btool(?:s)?\b.*\b(use|call|execute)\b",
+    r"\b(web_search|fetch_full_text|cache_hit|cache_miss|semantic_cache)\b",
+    r"^(step \d+|first,|second,|next,|finally,)",
 ]
 
 
