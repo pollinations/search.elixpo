@@ -10,7 +10,8 @@ export default function ConversationList() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const clientId = localStorage.getItem('elixpo_client_id') || 'anonymous';
+    if (typeof window === 'undefined') return;
+    const clientId = window.localStorage.getItem('elixpo_client_id') || 'anonymous';
     fetch(`/api/conversations?clientId=${encodeURIComponent(clientId)}`)
       .then((r) => r.json())
       .then((data) => {

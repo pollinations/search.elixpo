@@ -16,24 +16,26 @@ export function useSession() {
   const [clientId, setClientId] = useState<string>('');
 
   useEffect(() => {
-    let stored = localStorage.getItem('elixpo_session_id');
+    if (typeof window === 'undefined') return;
+    let stored = window.localStorage.getItem('elixpo_session_id');
     if (!stored) {
       stored = generateSessionId();
-      localStorage.setItem('elixpo_session_id', stored);
+      window.localStorage.setItem('elixpo_session_id', stored);
     }
     setSessionId(stored);
 
-    let client = localStorage.getItem('elixpo_client_id');
+    let client = window.localStorage.getItem('elixpo_client_id');
     if (!client) {
       client = `client_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-      localStorage.setItem('elixpo_client_id', client);
+      window.localStorage.setItem('elixpo_client_id', client);
     }
     setClientId(client);
   }, []);
 
   const newSession = useCallback(() => {
+    if (typeof window === 'undefined') return '';
     const id = generateSessionId();
-    localStorage.setItem('elixpo_session_id', id);
+    window.localStorage.setItem('elixpo_session_id', id);
     setSessionId(id);
     return id;
   }, []);
