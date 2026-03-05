@@ -22,6 +22,7 @@ from pipeline.instruction import (
 )
 from pipeline.optimized_tool_execution import optimized_tool_execution
 from pipeline.utils import format_sse, get_model_server
+from pipeline.sse_messages import get_status_message, SSEStatusTracker
 from functionCalls.getImagePrompt import generate_prompt_from_image
 import asyncio
 load_dotenv()
@@ -35,67 +36,8 @@ def _scrub_tool_names(text: str) -> str:
         return text
     return LEAKED_TOOL_RE.sub("", text).strip()
 
-USER_FRIENDLY_MESSAGES = {
-    "processing": [
-        "<TASK>Processing your request</TASK>",
-        "<TASK>Working on it</TASK>",
-        "<TASK>Getting started</TASK>",
-        "<TASK>On it</TASK>",
-    ],
-    "analyzing": [
-        "<TASK>Analyzing your input</TASK>",
-        "<TASK>Understanding your query</TASK>",
-        "<TASK>Breaking down your question</TASK>",
-    ],
-    "searching": [
-        "<TASK>Searching for information</TASK>",
-        "<TASK>Looking things up</TASK>",
-        "<TASK>Searching the web</TASK>",
-        "<TASK>Finding relevant results</TASK>",
-    ],
-    "fetching": [
-        "<TASK>Gathering relevant data</TASK>",
-        "<TASK>Reading sources</TASK>",
-        "<TASK>Pulling in content</TASK>",
-        "<TASK>Collecting information</TASK>",
-    ],
-    "synthesizing": [
-        "<TASK>Preparing your answer</TASK>",
-        "<TASK>Putting it all together</TASK>",
-        "<TASK>Synthesizing findings</TASK>",
-    ],
-    "image_analysis": [
-        "<TASK>Analyzing provided content</TASK>",
-        "<TASK>Examining the image</TASK>",
-        "<TASK>Processing visual input</TASK>",
-    ],
-    "generating": [
-        "<TASK>Generating results</TASK>",
-        "<TASK>Creating your response</TASK>",
-        "<TASK>Building the answer</TASK>",
-    ],
-    "preparing": [
-        "<TASK>Preparing next step</TASK>",
-        "<TASK>Processing results</TASK>",
-        "<TASK>Reviewing gathered data</TASK>",
-    ],
-    "finalizing": [
-        "<TASK>Finalizing response</TASK>",
-        "<TASK>Wrapping up</TASK>",
-        "<TASK>Almost there</TASK>",
-    ],
-    "complete": [
-        "<TASK>Done</TASK>",
-        "<TASK>All done</TASK>",
-        "<TASK>Complete</TASK>",
-    ],
-}
-
 def get_user_message(operation: str) -> str:
-    variants = USER_FRIENDLY_MESSAGES.get(operation)
-    if not variants:
-        return "<TASK>Processing</TASK>"
-    return random.choice(variants)
+    return get_status_message(operation)
 
 
 def _decompose_query(query: str) -> list[str]:
@@ -940,6 +882,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
     initial_event = emit_event("INFO", get_user_message("processing"))
     if initial_event:
         yield initial_event
+    status_tracker = SSEStatusTracker(emit_fn=emit_event, stale_threshold=10.0)
     semantic_cache = None
     memoized_results = {}
     try:
@@ -1181,6 +1124,11 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"
 
+            # Refresh stale SSE status before potentially long LLM call
+            _stale_event = status_tracker.refresh_if_stale()
+            if _stale_event:
+                yield _stale_event
+
             try:
                 response = await asyncio.wait_for(
                     asyncio.to_thread(
@@ -1194,6 +1142,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 )
                 response.raise_for_status()
                 response_data = response.json()
+                status_tracker.touch()
             except asyncio.TimeoutError:
                 logger.error(f"API timeout at iteration {current_iteration}")
                 break
@@ -1255,6 +1204,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     )
                     if event_id:
                         yield format_sse("INFO", get_user_message("synthesizing"))
+                        status_tracker.touch()
                     _has_images = image_context_provided or bool(collected_images_from_web) or bool(collected_similar_images)
                     messages.append({
                         "role": "user",
@@ -1333,6 +1283,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 emit_sse = emit_event("INFO", f"<TASK>Running {search_count} web search{'es' if search_count > 1 else ''}</TASK>")
                 if emit_sse:
                     yield emit_sse
+                status_tracker.touch()
                 web_search_results = await asyncio.gather(
                     *[execute_tool_async(idx, tc, True) for idx, tc in enumerate(web_search_calls)],
                     return_exceptions=True
@@ -1388,6 +1339,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             tool_call_count += len(tool_calls)
 
             if fetch_calls:
+                _stale_event = status_tracker.refresh_if_stale()
+                if _stale_event:
+                    yield _stale_event
                 logger.info(f"[Pipeline] Fetching {len(fetch_calls)} sources in parallel")
 
                 async def execute_fetch(idx, tool_call):
@@ -1478,6 +1432,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             logger.info(f"[SYNTHESIS CONDITION MET] final_message_content={bool(final_message_content)}, current_iteration={current_iteration}, max_iterations={max_iterations}")
             if event_id:
                 yield format_sse("INFO", get_user_message("synthesizing"))
+                status_tracker.touch()
             logger.info("[SYNTHESIS] Re-retrieving context from vector store after ingestion...")
             try:
                 from searching.main import retrieve_from_vector_store
@@ -1614,6 +1569,11 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 "max_tokens": active_max_tokens,
                 "stream": False,
             }
+
+            # Refresh stale SSE status before synthesis LLM call
+            _stale_event = status_tracker.refresh_if_stale()
+            if _stale_event:
+                yield _stale_event
 
             try:
                 response = await asyncio.wait_for(
@@ -1895,9 +1855,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         if event_id:
             yield format_sse("INFO", "<TASK>DONE</TASK>")
     finally:
-        # NOTE: assistant response is already saved to session_context in the main flow
-        # (line ~1863). This block only handles the edge case where the main flow
-        # didn't reach the save point (e.g. fallback path or early exception).
         if session_id and "session_context" in memoized_results and memoized_results["session_context"]:
             try:
                 session_context = memoized_results["session_context"]
