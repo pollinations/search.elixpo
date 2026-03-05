@@ -97,6 +97,34 @@ def get_user_message(operation: str) -> str:
         return "<TASK>Processing</TASK>"
     return random.choice(variants)
 
+# ── Fast-path patterns: bypass LLM for simple single-tool queries ─────────
+_TIME_PATTERNS = re.compile(
+    r"(?:what(?:'s| is)?\s+(?:the\s+)?(?:current\s+)?time\s+(?:in|at|for)\s+(.+?)[\?\.]?\s*$)"
+    r"|(?:(?:current\s+)?time\s+(?:in|at|for)\s+(.+?)[\?\.]?\s*$)"
+    r"|(?:(?:tell|give|show)\s+me\s+(?:the\s+)?time\s+(?:in|at|for)\s+(.+?)[\?\.]?\s*$)"
+    r"|(?:(.+?)\s+(?:time|current time)\s*(?:now|right now|rn)?[\?\.]?\s*$)",
+    re.IGNORECASE,
+)
+
+def _detect_fast_path(query: str) -> tuple:
+    """
+    Detect if a query can be handled without any LLM call.
+    Returns (tool_name, args_dict) or (None, None).
+    """
+    if not query or len(query) > 120:
+        return None, None
+
+    m = _TIME_PATTERNS.match(query.strip())
+    if m:
+        location = next((g for g in m.groups() if g), None)
+        if location:
+            location = location.strip().rstrip("?.!,")
+            if location and len(location) < 60:
+                return "get_local_time", {"location_name": location}
+
+    return None, None
+
+
 def _decompose_query(query: str) -> list[str]:
     if not query or len(query) < 50:
         return [query]
@@ -1098,9 +1126,40 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             logger.info(f"[Pipeline] Image + Query mode: Will analyze image in context of query")
             image_context_provided = True
         
+        # ── Fast-path: bypass LLM for simple single-tool queries ──────────
+        if not image_only_mode and not user_image:
+            fast_tool, fast_args = _detect_fast_path(user_query)
+            if fast_tool:
+                logger.info(f"[FastPath] Detected fast-path: {fast_tool}({fast_args})")
+                try:
+                    if fast_tool == "get_local_time":
+                        from functionCalls.getTimeZone import get_local_time as _fast_get_time
+                        fast_result = await asyncio.wait_for(
+                            asyncio.to_thread(_fast_get_time, fast_args["location_name"]),
+                            timeout=10.0
+                        )
+                        if fast_result and "Error" not in fast_result and "Could not" not in fast_result:
+                            # Store in session context
+                            if session_context:
+                                try:
+                                    session_context.add_message(role="assistant", content=fast_result)
+                                    memoized_results["_assistant_response_saved"] = True
+                                except Exception:
+                                    pass
+                            memoized_results["final_response"] = fast_result
+                            if event_id:
+                                yield format_sse("INFO", get_user_message("generating"))
+                                yield format_sse("RESPONSE", fast_result)
+                                yield format_sse("INFO", "<TASK>DONE</TASK>")
+                            else:
+                                yield fast_result
+                            return
+                except Exception as e:
+                    logger.warning(f"[FastPath] Fast-path failed, falling back to LLM: {e}")
+
         max_iterations = 3
         current_iteration = 0
-        fetch_retry_done = False  
+        fetch_retry_done = False
         collected_sources = []
         collected_images_from_web = []
         collected_similar_images = []
