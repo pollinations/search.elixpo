@@ -298,11 +298,22 @@ class HybridConversationCache:
     # ── Context retrieval ────────────────────────────────────────────────
 
     def get_context(self) -> List[Dict]:
-        """Return recent messages from Redis hot window (chronological order)."""
+        """Return recent messages from Redis hot window (chronological order).
+        Falls back to disk if Redis is empty (e.g. after LRU eviction)."""
         _update_last_activity(self.session_id)
         if self._redis:
-            return self._get_from_redis()
-        # Disk fallback
+            messages = self._get_from_redis()
+            if messages:
+                return messages
+            # Redis available but empty — session may have been evicted to disk
+            disk_messages = self.archive.load_recent(self.session_id, self.hot_window_size)
+            if disk_messages:
+                logger.info(
+                    f"[HybridCache] session={self.session_id} Redis empty, "
+                    f"recovered {len(disk_messages)} messages from disk"
+                )
+            return disk_messages
+        # Redis unavailable — disk-only fallback
         return self.archive.load_recent(self.session_id, self.hot_window_size)
 
     def _get_from_redis(self) -> List[Dict]:
@@ -348,8 +359,8 @@ class HybridConversationCache:
     def smart_context(self, query: str, query_embedding=None, recent_k: int = 10, disk_k: int = 5) -> Dict[str, List[Dict]]:
         """
         Intelligent context assembly:
-        1. Always include recent_k hot messages from Redis
-        2. If context window might be exceeded (query_embedding provided),
+        1. Always include recent_k hot messages from Redis (or disk if evicted)
+        2. If query_embedding provided or recent messages are sparse,
            also retrieve disk_k semantically relevant turns from disk
 
         Returns {"recent": [...], "relevant": [...]}
@@ -357,7 +368,10 @@ class HybridConversationCache:
         recent = self.get_context()[-recent_k:]
         relevant: List[Dict] = []
 
-        if query_embedding is not None:
+        # Always try disk search when we have a query embedding or few recent messages
+        has_disk_archive = self.archive.session_exists(self.session_id)
+
+        if query_embedding is not None and has_disk_archive:
             try:
                 relevant = self.archive.search_by_embedding(
                     self.session_id, query_embedding, top_k=disk_k
@@ -366,10 +380,9 @@ class HybridConversationCache:
                 logger.debug(
                     f"[HybridCache] session={self.session_id} smart_context embedding search: {e}"
                 )
-                # Fall back to token-overlap search
                 relevant = self.archive.search_by_text(self.session_id, query, top_k=disk_k)
-        elif len(recent) < 3:
-            # Very few recent messages – pull some disk history for context
+        elif has_disk_archive and (len(recent) < recent_k):
+            # Fewer messages than requested — enrich from disk
             relevant = self.archive.search_by_text(self.session_id, query, top_k=disk_k)
 
         return {"recent": recent, "relevant": relevant}

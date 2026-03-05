@@ -719,6 +719,7 @@ async def _run_deep_search_pipeline(
         if session_context:
             try:
                 session_context.add_message(role="assistant", content=combined_content)
+                memoized_results["_assistant_response_saved"] = True
             except Exception as e:
                 logger.warning(f"[DeepSearch] Session context save failed: {e}")
 
@@ -1031,6 +1032,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         session_context = None
         if session_id:
             try:
+                init_event = emit_event("INFO", "<TASK>Loading session context</TASK>")
+                if init_event:
+                    yield init_event
                 session_context = SessionContextWindow(session_id=session_id)
                 memoized_results["session_context"] = session_context
                 previous_messages = session_context.get_context()
@@ -1041,6 +1045,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     f"[Pipeline] Initialized SessionContextWindow for {session_id}: "
                     f"loaded {loaded_count} hot messages, added current query"
                 )
+                if loaded_count > 0:
+                    ctx_event = emit_event("INFO", f"<TASK>Restored {loaded_count} previous messages</TASK>")
+                    if ctx_event:
+                        yield ctx_event
             except Exception as e:
                 logger.warning(f"[Pipeline] Failed to initialize SessionContextWindow: {e}")
                 session_context = None
@@ -1112,12 +1120,18 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             for i, component in enumerate(query_components, 1):
                 logger.info(f"[DECOMPOSITION] Component {i}: {component[:80]}")
             memoized_results["query_components"] = query_components
+            decomp_event = emit_event("INFO", f"<TASK>Decomposed into {len(query_components)} sub-queries</TASK>")
+            if decomp_event:
+                yield decomp_event
         else:
             logger.info(f"[DECOMPOSITION] Query is single component, no decomposition needed")
             memoized_results["query_components"] = [user_query]
         rag_context = ""
         if core_service:
             try:
+                rag_event = emit_event("INFO", "<TASK>Searching knowledge base</TASK>")
+                if rag_event:
+                    yield rag_event
                 retrieval_result = core_service.retrieve(user_query, top_k=3)
                 if retrieval_result.get("count", 0) > 0:
                     rag_context = "\n".join([r["metadata"]["text"] for r in retrieval_result.get("results", [])])
@@ -1318,15 +1332,18 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 }
             
             if web_search_calls:
-                emit_sse = emit_event("INFO", get_user_message("fetching"))
+                search_count = len(web_search_calls)
+                emit_sse = emit_event("INFO", f"<TASK>Running {search_count} web search{'es' if search_count > 1 else ''}</TASK>")
                 if emit_sse:
                     yield emit_sse
                 web_search_results = await asyncio.gather(
                     *[execute_tool_async(idx, tc, True) for idx, tc in enumerate(web_search_calls)],
                     return_exceptions=True
                 )
+                successful_searches = 0
                 for result in web_search_results:
                     if not isinstance(result, Exception):
+                        successful_searches += 1
                         if result["name"] == "web_search" and "current_search_urls" in memoized_results:
                             collected_sources.extend(memoized_results["current_search_urls"][:3])
                         tool_outputs.append({
@@ -1335,11 +1352,19 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             "name": result["name"],
                             "content": str(result["result"]) if result["result"] else "No result"
                         })
+                if successful_searches > 0:
+                    sources_event = emit_event("INFO", f"<TASK>Found {len(collected_sources)} sources</TASK>")
+                    if sources_event:
+                        yield sources_event
             
             for idx, tool_call in enumerate(other_calls):
                 function_name = tool_call["function"]["name"]
                 function_args = json.loads(tool_call["function"]["arguments"])
                 logger.info(f"[Sequential Tool #{idx+1}] {function_name}")
+                tool_label = function_name.replace("_", " ").title()
+                tool_event = emit_event("INFO", f"<TASK>{tool_label}</TASK>")
+                if tool_event:
+                    yield tool_event
 
                 tool_result_gen = optimized_tool_execution(function_name, function_args, memoized_results, emit_event)
                 if hasattr(tool_result_gen, '__aiter__'):
@@ -1531,7 +1556,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
 
             messages.extend(tool_outputs)
             logger.info(f"Completed iteration {current_iteration}. Messages: {len(messages)}, Total tools: {tool_call_count}")
-            progress_event = emit_event("INFO", get_user_message("preparing"))
+            if current_iteration < max_iterations:
+                progress_event = emit_event("INFO", f"<TASK>Processing results (step {current_iteration}/{max_iterations})</TASK>")
+            else:
+                progress_event = emit_event("INFO", get_user_message("preparing"))
             if progress_event:
                 yield progress_event
 
@@ -1643,6 +1671,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     if session_context:
                         try:
                             session_context.add_message(role="assistant", content=final_message_content)
+                            memoized_results["_assistant_response_saved"] = True
                         except Exception as e:
                             logger.warning(f"[Pipeline] Failed to store decomposed reply in hybrid cache: {e}")
 
@@ -1861,6 +1890,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             if session_context:
                 try:
                     session_context.add_message(role="assistant", content=final_message_content)
+                    memoized_results["_assistant_response_saved"] = True
                     logger.debug(f"[Pipeline] Stored assistant reply in hybrid cache for session={session_id}")
                 except Exception as e:
                     logger.warning(f"[Pipeline] Failed to store assistant reply in hybrid cache: {e}")
@@ -1916,12 +1946,16 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         if event_id:
             yield format_sse("INFO", "<TASK>DONE</TASK>")
     finally:
+        # NOTE: assistant response is already saved to session_context in the main flow
+        # (line ~1863). This block only handles the edge case where the main flow
+        # didn't reach the save point (e.g. fallback path or early exception).
         if session_id and "session_context" in memoized_results and memoized_results["session_context"]:
             try:
                 session_context = memoized_results["session_context"]
                 if "final_response" in memoized_results and memoized_results["final_response"]:
-                    session_context.add_message(role="assistant", content=memoized_results["final_response"])
-                    logger.info(f"[Pipeline] Saved assistant response to SessionContextWindow for {session_id}")
+                    if not memoized_results.get("_assistant_response_saved"):
+                        session_context.add_message(role="assistant", content=memoized_results["final_response"])
+                        logger.info(f"[Pipeline] Saved assistant response to SessionContextWindow for {session_id} (finally)")
             except Exception as e:
                 logger.warning(f"[Pipeline] Failed to save response to SessionContextWindow: {e}")
         
