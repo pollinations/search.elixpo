@@ -1099,7 +1099,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             logger.info(f"[Pipeline] Image + Query mode: Will analyze image in context of query")
             image_context_provided = True
         
-        max_iterations = 3
+        max_iterations = 2
         current_iteration = 0
         fetch_retry_done = False
         collected_sources = []
@@ -1165,10 +1165,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             else:
                                 m["content"] = "Processing your request..."
 
-            if current_iteration == 1:
-                iteration_event = emit_event("INFO", get_user_message("analyzing"))
-                if iteration_event:
-                    yield iteration_event
             if len(messages) > 8:
                 trimmed = messages[:2] + messages[-6:]
                 logger.info(f"[OPTIMIZATION] Trimmed messages from {len(messages)} to {len(trimmed)}")
@@ -1242,9 +1238,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             tool_calls = assistant_message.get("tool_calls")
             logger.info(f"Tool calls suggested by model: {len(tool_calls) if tool_calls else 0} tools")
             if not tool_calls:
-                direct_event = emit_event("INFO", get_user_message("generating"))
-                if direct_event:
-                    yield direct_event
                 raw_content = assistant_message.get("content", "")
                 is_reasoning_leak = _looks_like_internal_reasoning(raw_content)
                 is_placeholder = raw_content.strip() in (
@@ -1354,19 +1347,12 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             "name": result["name"],
                             "content": str(result["result"]) if result["result"] else "No result"
                         })
-                if successful_searches > 0:
-                    sources_event = emit_event("INFO", f"<TASK>Found {len(collected_sources)} sources</TASK>")
-                    if sources_event:
-                        yield sources_event
+                logger.info(f"[Pipeline] Web search complete: {successful_searches} successful, {len(collected_sources)} sources")
             
             for idx, tool_call in enumerate(other_calls):
                 function_name = tool_call["function"]["name"]
                 function_args = json.loads(tool_call["function"]["arguments"])
                 logger.info(f"[Sequential Tool #{idx+1}] {function_name}")
-                tool_label = function_name.replace("_", " ").title()
-                tool_event = emit_event("INFO", f"<TASK>{tool_label}</TASK>")
-                if tool_event:
-                    yield tool_event
 
                 tool_result_gen = optimized_tool_execution(function_name, function_args, memoized_results, emit_event)
                 if hasattr(tool_result_gen, '__aiter__'):
@@ -1401,9 +1387,8 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
 
             if fetch_calls:
                 logger.info(f"Executing {len(fetch_calls)} fetch_full_text calls in PARALLEL")
-                if event_id:
-                    yield format_sse("INFO", f"<TASK>Reading {len(fetch_calls)} sources</TASK>")
-                
+                logger.info(f"[Pipeline] Fetching {len(fetch_calls)} sources in parallel")
+
                 async def execute_fetch(idx, tool_call):
                     function_name = tool_call["function"]["name"]
                     function_args = json.loads(tool_call["function"]["arguments"])
@@ -1482,92 +1467,11 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         logger.warning("[INGESTION] Timeout reached, continuing anyway")
 
                 good_fetches, total_fetches = _evaluate_fetch_quality(tool_outputs)
-                if total_fetches > 0 and good_fetches > 0:
-                    quality_event = emit_event("INFO", f"<TASK>Read {good_fetches}/{total_fetches} sources successfully</TASK>")
-                    if quality_event:
-                        yield quality_event
-                if total_fetches > 0 and good_fetches == 0 and not fetch_retry_done:
-                    fetch_retry_done = True
-                    logger.warning(
-                        f"[RETRY] All {total_fetches} URL fetches returned no usable content — retrying with fresh search"
-                    )
-                    if event_id:
-                        yield format_sse("INFO", "<TASK>Sources unavailable, retrying with new results</TASK>")
-
-                    from commons.searching_based import webSearch
-                    retry_query = f"{user_query} latest information"
-                    retry_urls = await webSearch(retry_query)
-                    logger.info(f"[RETRY] Fresh search returned {len(retry_urls)} URLs")
-
-                    if retry_urls:
-                        already_tried = {
-                            out.get("content", "").split("\n")[0].replace("URL: ", "")
-                            for out in tool_outputs if out.get("name") == "fetch_full_text"
-                        }
-                        new_urls = [u for u in retry_urls if u not in already_tried][:active_max_links]
-
-                        if new_urls:
-                            if event_id:
-                                yield format_sse("INFO", f"<TASK>Reading {len(new_urls)} new sources</TASK>")
-
-                            from commons.searching_based import fetch_url_content_parallel
-
-                            async def _retry_fetch_single(url):
-                                try:
-                                    result = await asyncio.wait_for(
-                                        asyncio.to_thread(
-                                            fetch_url_content_parallel,
-                                            [user_query], [url]
-                                        ),
-                                        timeout=8.0,
-                                    )
-                                    return {"url": url, "content": result}
-                                except Exception as e:
-                                    logger.warning(f"[RETRY FETCH] {url[:50]} failed: {e}")
-                                    return {"url": url, "content": ""}
-
-                            try:
-                                retry_results = await asyncio.wait_for(
-                                    asyncio.gather(
-                                        *[_retry_fetch_single(u) for u in new_urls],
-                                        return_exceptions=True
-                                    ),
-                                    timeout=10.0,
-                                )
-                            except (asyncio.TimeoutError, TimeoutError):
-                                logger.warning("[RETRY] Parallel retry timed out")
-                                retry_results = []
-
-                            retry_added = 0
-                            for r in retry_results:
-                                if isinstance(r, Exception) or not r.get("content"):
-                                    continue
-                                content = str(r["content"])
-                                if len(content) >= FETCH_MIN_USEFUL_CHARS:
-                                    tool_outputs.append({
-                                        "role": "tool",
-                                        "tool_call_id": "retry-fetch",
-                                        "name": "fetch_full_text",
-                                        "content": content[:500],
-                                    })
-                                    if r["url"] not in collected_sources and len(collected_sources) < 5:
-                                        collected_sources.append(r["url"])
-                                    retry_added += 1
-
-                            logger.info(f"[RETRY] Added {retry_added} usable results from retry round")
-                elif total_fetches > 0 and good_fetches < total_fetches:
-                    logger.info(
-                        f"[FETCH QUALITY] {good_fetches}/{total_fetches} fetches returned usable content"
-                    )
+                if total_fetches > 0:
+                    logger.info(f"[FETCH QUALITY] {good_fetches}/{total_fetches} fetches returned usable content")
 
             messages.extend(tool_outputs)
             logger.info(f"Completed iteration {current_iteration}. Messages: {len(messages)}, Total tools: {tool_call_count}")
-            if current_iteration < max_iterations:
-                progress_event = emit_event("INFO", f"<TASK>Processing results (step {current_iteration}/{max_iterations})</TASK>")
-            else:
-                progress_event = emit_event("INFO", get_user_message("preparing"))
-            if progress_event:
-                yield progress_event
 
         if not final_message_content and current_iteration >= max_iterations:
             logger.info(f"[SYNTHESIS CONDITION MET] final_message_content={bool(final_message_content)}, current_iteration={current_iteration}, max_iterations={max_iterations}")
@@ -1904,7 +1808,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             memoized_results["final_response"] = response_with_sources
             
             if event_id:
-                yield format_sse("INFO", get_user_message("finalizing"))
                 yield format_sse("RESPONSE", response_with_sources)
                 yield format_sse("INFO", "<TASK>DONE</TASK>")
             else:
