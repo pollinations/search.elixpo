@@ -2,23 +2,26 @@
 
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DATA_DIR="$SCRIPT_DIR/data"
 
 REDIS_PORT=9530
 CHROMA_PORT=9001
 CHROMA_HOST="localhost"
 CHROMA_PATH="$DATA_DIR/embeddings"
-VENV_CHROMA="$SCRIPT_DIR/venv/bin/chroma"
+VENV_CHROMA="$PROJECT_ROOT/venv/bin/chroma"
+
+PG_BIN="/usr/lib/postgresql/16/bin"
+export PATH="$PG_BIN:$PATH"
 
 PG_PORT=5432
 PG_USER="${POSTGRES_USER:-postgres}"
 PG_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
 PG_DB="${POSTGRES_DB:-elixpo_search}"
-PG_DATA="$DATA_DIR/postgres"
+PG_SYS_USER="postgres"
 
 REDIS_PID=""
 CHROMA_PID=""
-PG_PID=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -84,8 +87,8 @@ cleanup() {
     info "Shutting down services..."
     [ -n "$CHROMA_PID" ] && kill "$CHROMA_PID" 2>/dev/null && success "Chroma stopped"
     [ -n "$REDIS_PID"  ] && kill "$REDIS_PID"  2>/dev/null && success "Redis stopped"
-    if [ -n "$PG_PID" ]; then
-        pg_ctl -D "$PG_DATA" stop -m fast 2>/dev/null && success "PostgreSQL stopped"
+    if postgres_running; then
+        sudo pg_ctlcluster 16 main stop -- -m fast 2>/dev/null && success "PostgreSQL stopped"
     fi
     wait
     exit 0
@@ -143,35 +146,25 @@ start_services() {
     if postgres_running; then
         success "PostgreSQL already running on port $PG_PORT"
     else
-        info "Starting PostgreSQL on port $PG_PORT (data: $PG_DATA)..."
-        mkdir -p "$PG_DATA"
-
-        if [ ! -f "$PG_DATA/PG_VERSION" ]; then
-            info "Initializing PostgreSQL data directory..."
-            initdb -D "$PG_DATA" -U "$PG_USER" --auth=trust \
-                >> "$DATA_DIR/postgres.log" 2>&1
-            # Set port in postgresql.conf
-            echo "port = $PG_PORT" >> "$PG_DATA/postgresql.conf"
-        fi
-
-        pg_ctl -D "$PG_DATA" -l "$DATA_DIR/postgres.log" -o "-p $PG_PORT" start 2>/dev/null
-        PG_PID=$(head -1 "$PG_DATA/postmaster.pid" 2>/dev/null)
+        info "Starting PostgreSQL on port $PG_PORT..."
+        sudo pg_ctlcluster 16 main start >> "$DATA_DIR/postgres.log" 2>&1
 
         if wait_for_postgres; then
-            # Create database if it doesn't exist
-            psql -h localhost -p "$PG_PORT" -U "$PG_USER" -tc \
-                "SELECT 1 FROM pg_database WHERE datname = '$PG_DB'" 2>/dev/null \
-                | grep -q 1 \
-                || createdb -h localhost -p "$PG_PORT" -U "$PG_USER" "$PG_DB" 2>/dev/null
-            success "PostgreSQL started (pid $PG_PID, db: $PG_DB)"
+            success "PostgreSQL started"
         else
             error "PostgreSQL failed to start – see $DATA_DIR/postgres.log"
-            pg_ctl -D "$PG_DATA" stop 2>/dev/null
             [ -n "$CHROMA_PID" ] && kill "$CHROMA_PID" 2>/dev/null
             [ -n "$REDIS_PID"  ] && kill "$REDIS_PID"  2>/dev/null
             exit 1
         fi
     fi
+
+    # Ensure database exists
+    sudo -u "$PG_SYS_USER" psql -h localhost -p "$PG_PORT" -U "$PG_USER" -tc \
+        "SELECT 1 FROM pg_database WHERE datname = '$PG_DB'" 2>/dev/null \
+        | grep -q 1 \
+        || sudo -u "$PG_SYS_USER" createdb -h localhost -p "$PG_PORT" -U "$PG_USER" "$PG_DB" 2>/dev/null \
+        && success "Database '$PG_DB' ready"
 
     echo ""
     success "All services ready  (Ctrl+C to stop)"
@@ -206,7 +199,7 @@ stop_services() {
 
     # Stop PostgreSQL
     if postgres_running; then
-        pg_ctl -D "$PG_DATA" stop -m fast 2>/dev/null && success "PostgreSQL stopped"
+        sudo pg_ctlcluster 16 main stop -- -m fast 2>/dev/null && success "PostgreSQL stopped"
     else
         warning "PostgreSQL not running on port $PG_PORT"
     fi
