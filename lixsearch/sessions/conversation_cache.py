@@ -230,10 +230,18 @@ class ConversationCacheManager:
         try:
             cache_file = os.path.join(self.cache_dir, f"cache_{session_id}.pkl")
             
-            # Prepare serializable cache (remove numpy embeddings)
+            # Persist embeddings as lists so they survive pickle
+            serializable_embeddings = {}
+            for eid, emb in self.embeddings_cache.items():
+                try:
+                    serializable_embeddings[eid] = emb.tolist() if hasattr(emb, 'tolist') else list(emb)
+                except Exception:
+                    pass
+
             serializable_cache = {
                 "full_cache": self.full_cache,
                 "cache_entries": list(self.cache_window),
+                "embeddings": serializable_embeddings,
                 "metadata": {
                     "window_size": self.window_size,
                     "max_entries": self.max_entries,
@@ -274,18 +282,15 @@ class ConversationCacheManager:
             
             self.full_cache = serializable_cache.get("full_cache", {})
             loaded_entries = serializable_cache.get("cache_entries", [])
-            
-            # Reload embeddings for cached entries
+            saved_embeddings = serializable_cache.get("embeddings", {})
+
+            # Restore embeddings from disk (avoid expensive re-computation)
             for entry in loaded_entries:
                 if not self._is_expired(entry):
-                    try:
-                        query = entry.get("query", "")
-                        embedding = self._embed_text(query)
-                        if embedding is not None:
-                            self.embeddings_cache[entry.get("id")] = embedding
-                        self.cache_window.append(entry)
-                    except Exception as e:
-                        logger.warning(f"[ConversationCache] Failed to reload embedding: {e}")
+                    eid = entry.get("id")
+                    if eid and eid in saved_embeddings:
+                        self.embeddings_cache[eid] = np.array(saved_embeddings[eid], dtype=np.float32)
+                    self.cache_window.append(entry)
             
             logger.info(f"[ConversationCache] Loaded {len(self.cache_window)} entries from disk (session: {session_id})")
             return True

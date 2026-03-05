@@ -136,8 +136,30 @@ export function useSSESearch() {
             continue;
           }
 
-          const sourcesMatch = content.match(/\*\*Sources:\*\*([\s\S]*)/);
-          const imagesMatch = content.match(/\*\*Related Images:\*\*([\s\S]*)/);
+          // Check for images first (non-greedy) to avoid sources regex eating image section
+          const imagesMatch = content.match(/\*\*(?:Related|Similar) Images:\*\*([\s\S]*)/);
+          // Sources regex stops before any image section
+          const sourcesMatch = content.match(/\*\*Sources:\*\*([\s\S]*?)(?=\*\*(?:Related|Similar) Images:\*\*|$)/);
+
+          if (imagesMatch) {
+            const imagesText = imagesMatch[1];
+            const imageUrlRegex = /(https?:\/\/[^\s)]+)/g;
+            const images: string[] = [];
+            let imageMatch;
+            while ((imageMatch = imageUrlRegex.exec(imagesText)) !== null) {
+              images.push(imageMatch[1]);
+            }
+            if (images.length > 0) {
+              setState((prev) => ({
+                ...prev,
+                messages: prev.messages.map((m) =>
+                  m.id === assistantMsg.id
+                    ? { ...m, images: [...(m.images || []), ...images] }
+                    : m
+                ),
+              }));
+            }
+          }
 
           if (sourcesMatch) {
             const sourcesText = sourcesMatch[1];
@@ -157,31 +179,13 @@ export function useSSESearch() {
                 ),
               }));
             }
-            const mainContent = content.replace(/\*\*Sources:\*\*[\s\S]*/i, '').trim();
-            if (mainContent) {
-              appendContent(assistantMsg.id, mainContent, sessionId);
-            }
-          } else if (imagesMatch) {
-            const imagesText = imagesMatch[1];
-            const imageUrlRegex = /(https?:\/\/[^\s)]+)/g;
-            const images: string[] = [];
-            let imageMatch;
-            while ((imageMatch = imageUrlRegex.exec(imagesText)) !== null) {
-              if (/[?&]h=\w+/i.test(imageMatch[1])) {
-                images.push(imageMatch[1]);
-              }
-            }
-            if (images.length > 0) {
-              setState((prev) => ({
-                ...prev,
-                messages: prev.messages.map((m) =>
-                  m.id === assistantMsg.id
-                    ? { ...m, images: [...(m.images || []), ...images] }
-                    : m
-                ),
-              }));
-            }
-            const mainContent = content.replace(/\*\*Related Images:\*\*[\s\S]*/i, '').trim();
+          }
+
+          if (sourcesMatch || imagesMatch) {
+            const mainContent = content
+              .replace(/\*\*Sources:\*\*[\s\S]*?(?=\*\*(?:Related|Similar) Images:\*\*|$)/i, '')
+              .replace(/\*\*(?:Related|Similar) Images:\*\*[\s\S]*/i, '')
+              .trim();
             if (mainContent) {
               appendContent(assistantMsg.id, mainContent, sessionId);
             }
