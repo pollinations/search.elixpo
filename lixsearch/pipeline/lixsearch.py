@@ -1032,9 +1032,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         session_context = None
         if session_id:
             try:
-                init_event = emit_event("INFO", "<TASK>Loading session context</TASK>")
-                if init_event:
-                    yield init_event
                 session_context = SessionContextWindow(session_id=session_id)
                 memoized_results["session_context"] = session_context
                 previous_messages = session_context.get_context()
@@ -1045,10 +1042,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     f"[Pipeline] Initialized SessionContextWindow for {session_id}: "
                     f"loaded {loaded_count} hot messages, added current query"
                 )
-                if loaded_count > 0:
-                    ctx_event = emit_event("INFO", f"<TASK>Restored {loaded_count} previous messages</TASK>")
-                    if ctx_event:
-                        yield ctx_event
             except Exception as e:
                 logger.warning(f"[Pipeline] Failed to initialize SessionContextWindow: {e}")
                 session_context = None
@@ -1126,16 +1119,20 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         else:
             logger.info(f"[DECOMPOSITION] Query is single component, no decomposition needed")
             memoized_results["query_components"] = [user_query]
+
+        # RAG retrieval — run async with timeout so it never blocks the main pipeline
         rag_context = ""
         if core_service:
             try:
-                rag_event = emit_event("INFO", "<TASK>Searching knowledge base</TASK>")
-                if rag_event:
-                    yield rag_event
-                retrieval_result = core_service.retrieve(user_query, top_k=3)
+                retrieval_result = await asyncio.wait_for(
+                    asyncio.to_thread(core_service.retrieve, user_query, 3),
+                    timeout=3.0
+                )
                 if retrieval_result.get("count", 0) > 0:
                     rag_context = "\n".join([r["metadata"]["text"] for r in retrieval_result.get("results", [])])
                     logger.info(f"[Pipeline] Retrieved {retrieval_result.get('count', 0)} chunks from vector store")
+            except asyncio.TimeoutError:
+                logger.warning("[Pipeline] Vector store retrieval timed out (3s), continuing without context")
             except Exception as e:
                 logger.warning(f"[Pipeline] Vector store retrieval failed, continuing without context: {e}")
         else:
@@ -1167,9 +1164,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             else:
                                 m["content"] = "Processing your request..."
 
-            iteration_event = emit_event("INFO", get_user_message("analyzing"))
-            if iteration_event:
-                yield iteration_event
+            if current_iteration == 1:
+                iteration_event = emit_event("INFO", get_user_message("analyzing"))
+                if iteration_event:
+                    yield iteration_event
             if len(messages) > 8:
                 trimmed = messages[:2] + messages[-6:]
                 logger.info(f"[OPTIMIZATION] Trimmed messages from {len(messages)} to {len(trimmed)}")
