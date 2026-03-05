@@ -10,8 +10,15 @@ CHROMA_HOST="localhost"
 CHROMA_PATH="$DATA_DIR/embeddings"
 VENV_CHROMA="$SCRIPT_DIR/venv/bin/chroma"
 
+PG_PORT=5432
+PG_USER="${POSTGRES_USER:-postgres}"
+PG_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
+PG_DB="${POSTGRES_DB:-elixpo_search}"
+PG_DATA="$DATA_DIR/postgres"
+
 REDIS_PID=""
 CHROMA_PID=""
+PG_PID=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -34,6 +41,20 @@ redis_running() {
 
 chroma_running() {
     curl -sf "http://$CHROMA_HOST:$CHROMA_PORT/api/v2/heartbeat" > /dev/null 2>&1
+}
+
+postgres_running() {
+    pg_isready -h localhost -p "$PG_PORT" -U "$PG_USER" > /dev/null 2>&1
+}
+
+wait_for_postgres() {
+    local retries=30
+    while [ $retries -gt 0 ]; do
+        postgres_running && return 0
+        sleep 0.5
+        retries=$((retries - 1))
+    done
+    return 1
 }
 
 wait_for_redis() {
@@ -63,6 +84,9 @@ cleanup() {
     info "Shutting down services..."
     [ -n "$CHROMA_PID" ] && kill "$CHROMA_PID" 2>/dev/null && success "Chroma stopped"
     [ -n "$REDIS_PID"  ] && kill "$REDIS_PID"  2>/dev/null && success "Redis stopped"
+    if [ -n "$PG_PID" ]; then
+        pg_ctl -D "$PG_DATA" stop -m fast 2>/dev/null && success "PostgreSQL stopped"
+    fi
     wait
     exit 0
 }
@@ -115,10 +139,45 @@ start_services() {
         fi
     fi
 
+    # ── PostgreSQL ─────────────────────────────────────────────────────────
+    if postgres_running; then
+        success "PostgreSQL already running on port $PG_PORT"
+    else
+        info "Starting PostgreSQL on port $PG_PORT (data: $PG_DATA)..."
+        mkdir -p "$PG_DATA"
+
+        if [ ! -f "$PG_DATA/PG_VERSION" ]; then
+            info "Initializing PostgreSQL data directory..."
+            initdb -D "$PG_DATA" -U "$PG_USER" --auth=trust \
+                >> "$DATA_DIR/postgres.log" 2>&1
+            # Set port in postgresql.conf
+            echo "port = $PG_PORT" >> "$PG_DATA/postgresql.conf"
+        fi
+
+        pg_ctl -D "$PG_DATA" -l "$DATA_DIR/postgres.log" -o "-p $PG_PORT" start 2>/dev/null
+        PG_PID=$(head -1 "$PG_DATA/postmaster.pid" 2>/dev/null)
+
+        if wait_for_postgres; then
+            # Create database if it doesn't exist
+            psql -h localhost -p "$PG_PORT" -U "$PG_USER" -tc \
+                "SELECT 1 FROM pg_database WHERE datname = '$PG_DB'" 2>/dev/null \
+                | grep -q 1 \
+                || createdb -h localhost -p "$PG_PORT" -U "$PG_USER" "$PG_DB" 2>/dev/null
+            success "PostgreSQL started (pid $PG_PID, db: $PG_DB)"
+        else
+            error "PostgreSQL failed to start – see $DATA_DIR/postgres.log"
+            pg_ctl -D "$PG_DATA" stop 2>/dev/null
+            [ -n "$CHROMA_PID" ] && kill "$CHROMA_PID" 2>/dev/null
+            [ -n "$REDIS_PID"  ] && kill "$REDIS_PID"  2>/dev/null
+            exit 1
+        fi
+    fi
+
     echo ""
     success "All services ready  (Ctrl+C to stop)"
-    info    "  Redis  →  localhost:$REDIS_PORT"
-    info    "  Chroma →  http://$CHROMA_HOST:$CHROMA_PORT"
+    info    "  Redis      →  localhost:$REDIS_PORT"
+    info    "  Chroma     →  http://$CHROMA_HOST:$CHROMA_PORT"
+    info    "  PostgreSQL →  localhost:$PG_PORT ($PG_DB)"
     echo ""
 
     wait
@@ -144,6 +203,13 @@ stop_services() {
     else
         warning "Redis not running on port $REDIS_PORT"
     fi
+
+    # Stop PostgreSQL
+    if postgres_running; then
+        pg_ctl -D "$PG_DATA" stop -m fast 2>/dev/null && success "PostgreSQL stopped"
+    else
+        warning "PostgreSQL not running on port $PG_PORT"
+    fi
 }
 
 # ── Status ────────────────────────────────────────────────────────────────────
@@ -151,15 +217,21 @@ stop_services() {
 show_status() {
     echo ""
     if redis_running; then
-        success "Redis   localhost:$REDIS_PORT              RUNNING"
+        success "Redis      localhost:$REDIS_PORT              RUNNING"
     else
-        error   "Redis   localhost:$REDIS_PORT              NOT RUNNING"
+        error   "Redis      localhost:$REDIS_PORT              NOT RUNNING"
     fi
 
     if chroma_running; then
-        success "Chroma  http://$CHROMA_HOST:$CHROMA_PORT    RUNNING"
+        success "Chroma     http://$CHROMA_HOST:$CHROMA_PORT    RUNNING"
     else
-        error   "Chroma  http://$CHROMA_HOST:$CHROMA_PORT    NOT RUNNING"
+        error   "Chroma     http://$CHROMA_HOST:$CHROMA_PORT    NOT RUNNING"
+    fi
+
+    if postgres_running; then
+        success "PostgreSQL localhost:$PG_PORT                 RUNNING"
+    else
+        error   "PostgreSQL localhost:$PG_PORT                 NOT RUNNING"
     fi
     echo ""
 }
