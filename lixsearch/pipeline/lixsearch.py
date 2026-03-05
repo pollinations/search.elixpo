@@ -1251,9 +1251,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     )
                     if event_id:
                         yield format_sse("INFO", get_user_message("synthesizing"))
+                    _has_images = image_context_provided or bool(collected_images_from_web) or bool(collected_similar_images)
                     messages.append({
                         "role": "user",
-                        "content": synthesis_instruction(user_query, image_context=image_context_provided, is_detailed=is_detailed_mode)
+                        "content": synthesis_instruction(user_query, image_context=_has_images, is_detailed=is_detailed_mode)
                     })
                     force_synthesis = True
                     continue
@@ -1588,9 +1589,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 return
 
             logger.info("[SYNTHESIS] Starting synthesis of gathered information")
+            _has_images = image_context_provided or bool(collected_images_from_web) or bool(collected_similar_images)
             synthesis_prompt = {
                 "role": "user",
-                "content": synthesis_instruction(user_query, image_context=image_context_provided, is_detailed=is_detailed_mode)
+                "content": synthesis_instruction(user_query, image_context=_has_images, is_detailed=is_detailed_mode)
             }
 
             original_msg_count = len(messages)
@@ -1685,11 +1687,26 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             logger.info(f"[FINAL] final_message_content starts with: {final_message_content[:LOG_MESSAGE_PREVIEW_TRUNCATE] if final_message_content else 'None'}")
             logger.info(f"[FINAL] final_message_content starts with: {final_message_content[:LOG_MESSAGE_PREVIEW_TRUNCATE] if final_message_content else 'None'}")
             
-            if (collected_images_from_web or collected_similar_images) and final_message_content in ["Processing your request...", "I'll help you with that. Let me gather the information you need."]:
-                logger.info(f"[FINAL] Detected placeholder content with collected images. Triggering synthesis...")
+            _is_placeholder_or_fallback = (
+                final_message_content in [
+                    "Processing your request...",
+                    "I'll help you with that. Let me gather the information you need.",
+                ]
+                or final_message_content.startswith("I found relevant information about")
+                or final_message_content.startswith("I gathered")
+                or final_message_content.startswith("I searched for information about")
+                or final_message_content.startswith("I processed your query about")
+            )
+            if (collected_images_from_web or collected_similar_images) and _is_placeholder_or_fallback:
+                logger.info(f"[FINAL] Detected placeholder/fallback content with collected images. Triggering synthesis...")
+                _image_pool = collected_similar_images if (image_only_mode and collected_similar_images) else collected_images_from_web
+                _image_list = "\n".join(f"![Image]({url})" for url in _image_pool[:10] if url and url.startswith("http"))
                 synthesis_prompt = {
                     "role": "user",
-                    "content": f"Based on the image analysis and search results, provide a final comprehensive answer to: {user_query}"
+                    "content": (
+                        f"Based on the search results, provide a final comprehensive answer to: {user_query}\n\n"
+                        f"Include these images in your response using markdown:\n{_image_list}"
+                    )
                 }
                 messages.append(synthesis_prompt)
                 
@@ -1821,15 +1838,38 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     final_message_content += f"\n\n{', '.join(collected_sources[:3])}"
                 
                 response_parts = [final_message_content]
+
+                image_pool = collected_similar_images if (image_only_mode and collected_similar_images) else collected_images_from_web
+                if image_pool:
+                    deduped_pool = []
+                    seen_urls = set()
+                    for img in image_pool:
+                        if img and img.startswith("http") and img not in seen_urls:
+                            seen_urls.add(img)
+                            deduped_pool.append(img)
+                    if deduped_pool:
+                        title = "Similar Images" if image_only_mode else "Related Images"
+                        label = "Similar Image" if image_only_mode else "Image"
+                        response_parts.append(f"\n\n**{title}:**\n")
+                        for img in deduped_pool[:10]:
+                            response_parts.append(f"![{label}]({img})\n")
+                        logger.info(f"[FALLBACK] Added {min(len(deduped_pool), 10)} images to fallback response")
+
+                generated_images = memoized_results.get("generated_images", [])
+                if generated_images:
+                    response_parts.append("\n\n**Generated Images:**\n")
+                    for img in generated_images:
+                        response_parts.append(f"![Generated Image]({img})\n")
+
                 if collected_sources:
                     response_parts.append("\n\n---\n**Sources:**\n")
                     unique_sources = sorted(list(set(collected_sources)))[:5]
                     for i, src in enumerate(unique_sources):
                         response_parts.append(f"{i+1}. [{src}]({src})\n")
                 response_with_fallback = "".join(response_parts)
-                
+
                 memoized_results["final_response"] = response_with_fallback
-                
+
                 if event_id:
                     yield format_sse("INFO", get_user_message("finalizing"))
                     chunk_size = 8000

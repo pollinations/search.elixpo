@@ -36,9 +36,12 @@ Answer directly if you can. Otherwise call the needed tool(s) — no text."""
 
 
 def synthesis_instruction(user_query, image_context=None, is_detailed=False):
+    image_note = ""
+    if image_context:
+        image_note = "\nImage results were found. Include relevant image URLs using ![description](url) markdown syntax in your answer."
     return f"""Write the final answer for: {user_query}
 
-All information is gathered. Produce the response now. Markdown. Cite as [Title](URL). No internal references."""
+All information is gathered. Produce the response now. Markdown. Cite as [Title](URL). No internal references.{image_note}"""
 
 
 def deep_search_gating_instruction(query):
