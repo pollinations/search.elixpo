@@ -1,8 +1,13 @@
 import { NextRequest } from 'next/server';
-import { backendUrl, backendHeaders } from '@/lib/api';
+import { backendUrl, backendHeaders, validateXID } from '@/lib/api';
 
 export async function POST(req: NextRequest) {
   try {
+    const xid = req.headers.get('x-xid');
+    if (!validateXID(xid)) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { query, session_id, stream = true, deep_search = false } = body;
 

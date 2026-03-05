@@ -1,8 +1,13 @@
 import { NextRequest } from 'next/server';
-import { backendUrl, backendHeaders } from '@/lib/api';
+import { backendUrl, backendHeaders, validateXID } from '@/lib/api';
 
 export async function POST(req: NextRequest) {
   try {
+    const xid = req.headers.get('x-xid');
+    if (!validateXID(xid)) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json();
     const backendRes = await fetch(backendUrl('/api/session/create'), {
       method: 'POST',
@@ -19,6 +24,11 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    const xid = req.headers.get('x-xid');
+    if (!validateXID(xid)) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const sessionId = req.nextUrl.searchParams.get('id');
     if (!sessionId) {
       return Response.json({ error: 'Missing session id' }, { status: 400 });

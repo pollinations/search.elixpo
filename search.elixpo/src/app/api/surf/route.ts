@@ -1,8 +1,13 @@
 import { NextRequest } from 'next/server';
-import { backendUrl, backendHeaders } from '@/lib/api';
+import { backendUrl, backendHeaders, validateXID } from '@/lib/api';
 
 export async function POST(req: NextRequest) {
   try {
+    const xid = req.headers.get('x-xid');
+    if (!validateXID(xid)) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { query, limit = 5, images = false } = body;
 
@@ -26,6 +31,11 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    const xid = req.headers.get('x-xid');
+    if (!validateXID(xid)) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const query = req.nextUrl.searchParams.get('query') || '';
     const limit = req.nextUrl.searchParams.get('limit') || '5';
     const images = req.nextUrl.searchParams.get('images') || 'false';

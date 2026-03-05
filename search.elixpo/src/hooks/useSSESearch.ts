@@ -47,7 +47,10 @@ export function useSSESearch() {
     try {
       const res = await fetch('/api/search', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-xid': process.env.NEXT_PUBLIC_XID || '',
+        },
         body: JSON.stringify({ query, session_id: sessionId, stream: true }),
         signal: abortRef.current.signal,
       });
@@ -215,7 +218,10 @@ export function useSSESearch() {
         if (assistant && assistant.content) {
           fetch('/api/conversations', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-xid': process.env.NEXT_PUBLIC_XID || '',
+            },
             body: JSON.stringify({
               sessionId,
               query,

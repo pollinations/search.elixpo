@@ -1,11 +1,16 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { backendUrl, backendHeaders } from '@/lib/api';
+import { backendUrl, backendHeaders, validateXID } from '@/lib/api';
 
 const RETENTION_DAYS = 30;
 
 export async function POST(req: NextRequest) {
   try {
+    const xid = req.headers.get('x-xid');
+    if (!validateXID(xid)) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const categories = body.categories || ['tech', 'finance', 'sports', 'entertainment', 'arts'];
 
