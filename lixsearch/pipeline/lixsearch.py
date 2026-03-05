@@ -1480,6 +1480,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         logger.warning("[INGESTION] Timeout reached, continuing anyway")
 
                 good_fetches, total_fetches = _evaluate_fetch_quality(tool_outputs)
+                if total_fetches > 0 and good_fetches > 0:
+                    quality_event = emit_event("INFO", f"<TASK>Read {good_fetches}/{total_fetches} sources successfully</TASK>")
+                    if quality_event:
+                        yield quality_event
                 if total_fetches > 0 and good_fetches == 0 and not fetch_retry_done:
                     fetch_retry_done = True
                     logger.warning(
