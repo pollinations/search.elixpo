@@ -1114,9 +1114,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             for i, component in enumerate(query_components, 1):
                 logger.info(f"[DECOMPOSITION] Component {i}: {component[:80]}")
             memoized_results["query_components"] = query_components
-            decomp_event = emit_event("INFO", f"<TASK>Decomposed into {len(query_components)} sub-queries</TASK>")
-            if decomp_event:
-                yield decomp_event
         else:
             logger.info(f"[DECOMPOSITION] Query is single component, no decomposition needed")
             memoized_results["query_components"] = [user_query]
@@ -1386,7 +1383,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             tool_call_count += len(tool_calls)
 
             if fetch_calls:
-                logger.info(f"Executing {len(fetch_calls)} fetch_full_text calls in PARALLEL")
                 logger.info(f"[Pipeline] Fetching {len(fetch_calls)} sources in parallel")
 
                 async def execute_fetch(idx, tool_call):
@@ -1414,10 +1410,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             *[execute_fetch(idx, tc) for idx, tc in enumerate(fetch_calls)],
                             return_exceptions=True
                         ),
-                        timeout=12.0
+                        timeout=8.0
                     )
                 except (asyncio.TimeoutError, TimeoutError):
-                    logger.warning(f"[PARALLEL FETCH] Timeout after 12s – continuing with results collected so far")
+                    logger.warning(f"[PARALLEL FETCH] Timeout after 8s – continuing with results collected so far")
                     fetch_results = []
 
                 ingest_tasks = []
