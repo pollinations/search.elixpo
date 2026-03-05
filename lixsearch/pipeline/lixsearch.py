@@ -125,6 +125,51 @@ def _detect_fast_path(query: str) -> tuple:
     return None, None
 
 
+# Keywords that signal a query needs tools (real-time data, URLs, explicit search intent)
+_TOOL_SIGNAL_RE = re.compile(
+    r"(?:https?://|www\.)"                          # URLs
+    r"|(?:search\s+(?:for|about|the))"              # explicit search
+    r"|(?:look\s+up|find\s+(?:me|out))"             # explicit lookup
+    r"|(?:fetch|scrape|download)"                    # explicit fetch
+    r"|(?:youtube\.com|youtu\.be)"                   # YouTube links
+    r"|(?:summarize|recap|what have we|our conversation)"  # session history
+    r"|(?:transcribe|translate)"                     # media tools
+    r"|(?:generate\s+(?:an?\s+)?image|draw|create\s+(?:an?\s+)?(?:image|picture))"  # image gen
+    r"|(?:compare|vs\.?\s|versus)"                   # comparison (needs search)
+    r"|(?:latest|breaking|today'?s|current\s+(?:news|price|score|weather|stock))"  # real-time
+    ,
+    re.IGNORECASE,
+)
+
+
+def _is_light_query(query: str) -> bool:
+    """
+    Heuristic: is this query likely answerable without any tool calls?
+    True for conversational, common-knowledge, math, follow-up, and short queries.
+    False if it contains URLs, search intent, real-time signals, or is long/complex.
+    """
+    if not query:
+        return False
+    q = query.strip()
+    # Long queries are more likely to need tools
+    if len(q) > 200:
+        return False
+    # Contains URL, search intent, or real-time signal
+    if _TOOL_SIGNAL_RE.search(q):
+        return False
+    # Time queries are handled by fast-path above, but if they slip through
+    if _TIME_PATTERNS.match(q):
+        return False
+    # Short queries (< 80 chars) without tool signals are almost always conversational or simple
+    if len(q) < 80:
+        return True
+    # Medium queries (80-200 chars) — only if they don't have question marks suggesting research
+    question_marks = q.count("?")
+    if question_marks <= 1:
+        return True
+    return False
+
+
 def _decompose_query(query: str) -> list[str]:
     if not query or len(query) < 50:
         return [query]
@@ -1126,7 +1171,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             logger.info(f"[Pipeline] Image + Query mode: Will analyze image in context of query")
             image_context_provided = True
         
-        # ── Fast-path: bypass LLM for simple single-tool queries ──────────
+        # ── Fast-path: bypass LLM for deterministic tool queries ─────────
         if not image_only_mode and not user_image:
             fast_tool, fast_args = _detect_fast_path(user_query)
             if fast_tool:
@@ -1139,7 +1184,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             timeout=10.0
                         )
                         if fast_result and "Error" not in fast_result and "Could not" not in fast_result:
-                            # Store in session context
                             if session_context:
                                 try:
                                     session_context.add_message(role="assistant", content=fast_result)
@@ -1148,7 +1192,6 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                                     pass
                             memoized_results["final_response"] = fast_result
                             if event_id:
-                                yield format_sse("INFO", get_user_message("generating"))
                                 yield format_sse("RESPONSE", fast_result)
                                 yield format_sse("INFO", "<TASK>DONE</TASK>")
                             else:
@@ -1156,6 +1199,76 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             return
                 except Exception as e:
                     logger.warning(f"[FastPath] Fast-path failed, falling back to LLM: {e}")
+
+        # ── Light-path: short queries unlikely to need tools → single LLM call, no tools ──
+        if not image_only_mode and not user_image and _is_light_query(user_query):
+            logger.info(f"[LightPath] Short/simple query detected, skipping tools/RAG")
+            try:
+                light_messages = [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are lixSearch, a helpful AI assistant. "
+                            "Respond directly, concisely, and conversationally. "
+                            "Use markdown formatting. Do NOT mention tools, searches, or internal processes. "
+                            f"Current UTC time: {current_utc_time}"
+                        ),
+                    },
+                    {"role": "user", "content": user_query},
+                ]
+
+                # Include recent conversation context if available
+                if session_context:
+                    recent = session_context.get_context()
+                    if recent:
+                        ctx_msgs = []
+                        for msg in recent[-6:]:
+                            r = msg.get("role", "user")
+                            c = msg.get("content", "")
+                            if c and r in ("user", "assistant"):
+                                ctx_msgs.append({"role": r, "content": c[:500]})
+                        if ctx_msgs:
+                            light_messages = light_messages[:1] + ctx_msgs + light_messages[1:]
+
+                light_payload = {
+                    "model": MODEL,
+                    "messages": light_messages,
+                    "seed": random.randint(1000, 9999),
+                    "max_tokens": 1024,
+                }
+                light_resp = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        requests.post,
+                        POLLINATIONS_ENDPOINT,
+                        json=light_payload,
+                        headers=headers,
+                        timeout=15
+                    ),
+                    timeout=18.0
+                )
+                light_resp.raise_for_status()
+                light_data = light_resp.json()
+                light_content = light_data["choices"][0]["message"].get("content", "").strip()
+
+                if light_content and not _looks_like_internal_reasoning(light_content):
+                    light_content = _scrub_tool_names(light_content)
+                    if session_context:
+                        try:
+                            session_context.add_message(role="assistant", content=light_content)
+                            memoized_results["_assistant_response_saved"] = True
+                        except Exception:
+                            pass
+                    memoized_results["final_response"] = light_content
+                    if event_id:
+                        yield format_sse("RESPONSE", light_content)
+                        yield format_sse("INFO", "<TASK>DONE</TASK>")
+                    else:
+                        yield light_content
+                    return
+                else:
+                    logger.info("[LightPath] LLM returned reasoning/empty, falling back to full pipeline")
+            except Exception as e:
+                logger.warning(f"[LightPath] Failed, falling back to full pipeline: {e}")
 
         max_iterations = 3
         current_iteration = 0
