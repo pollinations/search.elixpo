@@ -2,11 +2,18 @@
 
 import { useState, useCallback, useRef } from 'react';
 import type { SearchMessage, Source } from '@/types';
+import { setCachedConversation, markCachedAsSaved } from '@/lib/conversationCache';
 
 interface SSESearchState {
   messages: SearchMessage[];
   isSearching: boolean;
   statusText: string;
+}
+
+function persistMessages(sessionId: string | null, messages: SearchMessage[]) {
+  if (sessionId && messages.length > 0) {
+    setCachedConversation(sessionId, messages);
+  }
 }
 
 export function useSSESearch() {
@@ -16,11 +23,17 @@ export function useSSESearch() {
     statusText: '',
   });
   const abortRef = useRef<AbortController | null>(null);
+  const sessionRef = useRef<string | null>(null);
+
+  // Allow setting initial messages (loaded from cache/DB)
+  const setMessages = useCallback((messages: SearchMessage[]) => {
+    setState((prev) => ({ ...prev, messages }));
+  }, []);
 
   const sendQuery = useCallback(async (query: string, sessionId: string) => {
     if (!query.trim() || state.isSearching) return;
+    sessionRef.current = sessionId;
 
-    // Add user message
     const userMsg: SearchMessage = {
       id: `user_${Date.now()}`,
       role: 'user',
@@ -36,11 +49,13 @@ export function useSSESearch() {
       isStreaming: true,
     };
 
-    setState((prev) => ({
-      messages: [...prev.messages, userMsg, assistantMsg],
+    const newMessages = [...state.messages, userMsg, assistantMsg];
+    setState({
+      messages: newMessages,
       isSearching: true,
       statusText: '',
-    }));
+    });
+    persistMessages(sessionId, newMessages);
 
     abortRef.current = new AbortController();
 
@@ -71,17 +86,18 @@ export function useSSESearch() {
 
         for (const part of parts) {
           if (part.startsWith('data: [DONE]')) {
-            setState((prev) => ({
-              ...prev,
-              isSearching: false,
-              statusText: '',
-              messages: prev.messages.map((m) =>
-                m.id === assistantMsg.id ? { ...m, isStreaming: false } : m
-              ),
-            }));
-
-            // Save to DB
-            const lastAssistant = state.messages.find((m) => m.id === assistantMsg.id);
+            setState((prev) => {
+              const updated = {
+                ...prev,
+                isSearching: false,
+                statusText: '',
+                messages: prev.messages.map((m) =>
+                  m.id === assistantMsg.id ? { ...m, isStreaming: false } : m
+                ),
+              };
+              persistMessages(sessionId, updated.messages);
+              return updated;
+            });
             saveToDB(sessionId, query, assistantMsg.id);
             return;
           }
@@ -97,20 +113,22 @@ export function useSSESearch() {
           }
 
           const content = data.choices?.[0]?.delta?.content || '';
-          const eventType = data.event_type;
 
-          // Task events (SSE status updates like "Searching the web...")
           if (content.startsWith('<TASK>')) {
             const taskText = content.replace(/<\/?TASK>/g, '');
             if (taskText === 'DONE') {
-              setState((prev) => ({
-                ...prev,
-                isSearching: false,
-                statusText: '',
-                messages: prev.messages.map((m) =>
-                  m.id === assistantMsg.id ? { ...m, isStreaming: false } : m
-                ),
-              }));
+              setState((prev) => {
+                const updated = {
+                  ...prev,
+                  isSearching: false,
+                  statusText: '',
+                  messages: prev.messages.map((m) =>
+                    m.id === assistantMsg.id ? { ...m, isStreaming: false } : m
+                  ),
+                };
+                persistMessages(sessionId, updated.messages);
+                return updated;
+              });
               saveToDB(sessionId, query, assistantMsg.id);
               return;
             }
@@ -118,7 +136,6 @@ export function useSSESearch() {
             continue;
           }
 
-          // Parse sources and images from content
           const sourcesMatch = content.match(/\*\*Sources:\*\*([\s\S]*)/);
           const imagesMatch = content.match(/\*\*Related Images:\*\*([\s\S]*)/);
 
@@ -140,10 +157,9 @@ export function useSSESearch() {
                 ),
               }));
             }
-            // Also append the non-source part of content
             const mainContent = content.replace(/\*\*Sources:\*\*[\s\S]*/i, '').trim();
             if (mainContent) {
-              appendContent(assistantMsg.id, mainContent);
+              appendContent(assistantMsg.id, mainContent, sessionId);
             }
           } else if (imagesMatch) {
             const imagesText = imagesMatch[1];
@@ -151,7 +167,6 @@ export function useSSESearch() {
             const images: string[] = [];
             let imageMatch;
             while ((imageMatch = imageUrlRegex.exec(imagesText)) !== null) {
-              // Only include images with h= param (as per original filter)
               if (/[?&]h=\w+/i.test(imageMatch[1])) {
                 images.push(imageMatch[1]);
               }
@@ -168,23 +183,27 @@ export function useSSESearch() {
             }
             const mainContent = content.replace(/\*\*Related Images:\*\*[\s\S]*/i, '').trim();
             if (mainContent) {
-              appendContent(assistantMsg.id, mainContent);
+              appendContent(assistantMsg.id, mainContent, sessionId);
             }
           } else if (content.trim()) {
-            appendContent(assistantMsg.id, content);
+            appendContent(assistantMsg.id, content, sessionId);
           }
         }
       }
 
       // Stream ended without [DONE]
-      setState((prev) => ({
-        ...prev,
-        isSearching: false,
-        statusText: '',
-        messages: prev.messages.map((m) =>
-          m.id === assistantMsg.id ? { ...m, isStreaming: false } : m
-        ),
-      }));
+      setState((prev) => {
+        const updated = {
+          ...prev,
+          isSearching: false,
+          statusText: '',
+          messages: prev.messages.map((m) =>
+            m.id === assistantMsg.id ? { ...m, isStreaming: false } : m
+          ),
+        };
+        persistMessages(sessionId, updated.messages);
+        return updated;
+      });
       saveToDB(sessionId, query, assistantMsg.id);
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return;
@@ -201,18 +220,26 @@ export function useSSESearch() {
     }
   }, [state.isSearching]);
 
-  const appendContent = (msgId: string, content: string) => {
-    setState((prev) => ({
-      ...prev,
-      messages: prev.messages.map((m) =>
-        m.id === msgId ? { ...m, content: m.content + content } : m
-      ),
-    }));
+  const appendContent = (msgId: string, content: string, sessionId: string) => {
+    setState((prev) => {
+      const updated = {
+        ...prev,
+        messages: prev.messages.map((m) =>
+          m.id === msgId ? { ...m, content: m.content + content } : m
+        ),
+      };
+      // Persist every ~5 updates to avoid thrashing localStorage
+      // We do a simple check: persist when content length crosses 500-char boundaries
+      const msg = updated.messages.find((m) => m.id === msgId);
+      if (msg && msg.content.length % 500 < content.length) {
+        persistMessages(sessionId, updated.messages);
+      }
+      return updated;
+    });
   };
 
   const saveToDB = async (sessionId: string, query: string, assistantMsgId: string) => {
     try {
-      // Get latest state from ref
       setState((prev) => {
         const assistant = prev.messages.find((m) => m.id === assistantMsgId);
         if (assistant && assistant.content) {
@@ -229,23 +256,31 @@ export function useSSESearch() {
               sources: assistant.sources,
               images: assistant.images,
             }),
-          }).catch(() => {}); // fire and forget
+          })
+            .then(() => markCachedAsSaved(sessionId))
+            .catch(() => {});
         }
         return prev;
       });
     } catch {
-      // ignore DB save errors
+      // ignore
     }
   };
 
   const cancelSearch = useCallback(() => {
     abortRef.current?.abort();
-    setState((prev) => ({
-      ...prev,
-      isSearching: false,
-      statusText: '',
-      messages: prev.messages.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
-    }));
+    setState((prev) => {
+      const updated = {
+        ...prev,
+        isSearching: false,
+        statusText: '',
+        messages: prev.messages.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
+      };
+      if (sessionRef.current) {
+        persistMessages(sessionRef.current, updated.messages);
+      }
+      return updated;
+    });
   }, []);
 
   const clearMessages = useCallback(() => {
@@ -257,5 +292,6 @@ export function useSSESearch() {
     sendQuery,
     cancelSearch,
     clearMessages,
+    setMessages,
   };
 }
