@@ -1173,17 +1173,21 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 print(f"{'='*80}\n")
                 logger.error(f"Unexpected API error at iteration {current_iteration}: {e}", exc_info=True)
                 break
-            assistant_message = response_data["choices"][0]["message"]
-            
+            choice = response_data.get("choices", [{}])[0]
+            assistant_message = choice.get("message") or choice.get("delta")
+            if not assistant_message:
+                logger.error(f"Unexpected API response structure: {response_data}")
+                break
+
             if not assistant_message.get("content"):
                 if assistant_message.get("tool_calls"):
                     assistant_message["content"] = "I'll help you with that. Let me gather the information you need."
                 else:
                     assistant_message["content"] = "Processing your request..."
-            
+
             if assistant_message.get("content") is None:
                 assistant_message["content"] = ""
-                
+
             messages.append(assistant_message)
             tool_calls = assistant_message.get("tool_calls")
             logger.info(f"Tool calls suggested by model: {len(tool_calls) if tool_calls else 0} tools")

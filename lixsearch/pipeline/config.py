@@ -62,8 +62,8 @@ LEAKED_TOOL_RE = re.compile(
     re.IGNORECASE,
 )
 
-LLM_MODEL = "gemini-fast"
-IMAGE_MODEL = "zimage"
+LLM_MODEL = "gemini-fast" # or kimi => these two models has performed the best 
+IMAGE_MODEL = "zimage" 
 VISION_MODEL = "gemini-fast"
 RESPONSE_MODEL = "lixsearch"
 LLM_MAX_TOKENS = 1500
