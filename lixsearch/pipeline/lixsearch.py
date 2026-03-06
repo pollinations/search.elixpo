@@ -1207,6 +1207,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 logger.error(f"Unexpected API response structure: {response_data}")
                 break
 
+            # Strip reasoning_content — it's internal model thinking, never user-facing
+            assistant_message.pop("reasoning_content", None)
+
             if not assistant_message.get("content"):
                 if assistant_message.get("tool_calls"):
                     assistant_message["content"] = "I'll help you with that. Let me gather the information you need."
@@ -1630,9 +1633,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
 
                     final_message_content = message.get("content", "").strip()
 
+                    # Never use reasoning_content — it's the model's internal thinking, not for the user
                     if not final_message_content and "reasoning_content" in message:
-                        final_message_content = message.get("reasoning_content", "").strip()
-                        logger.info("[SYNTHESIS] Using reasoning_content as fallback")
+                        logger.warning("[SYNTHESIS] Model returned reasoning_content but empty content — ignoring internal reasoning")
 
                     if not final_message_content and message.get("tool_calls"):
                         logger.warning(f"[SYNTHESIS] Model returned tool_calls instead of content in synthesis")

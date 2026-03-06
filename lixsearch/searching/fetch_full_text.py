@@ -70,25 +70,34 @@ def fetch_full_text(
             for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'form', 'button', 'noscript', 'iframe', 'svg']):
                 element.extract()
 
-            main_content_elements = soup.find_all(['main', 'article', 'div', 'section', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'p', 'article'], class_=[
-                'main', 'content', 'article', 'post', 'body', 'main-content', 'entry-content', 'blog-post'
-            ])
-            if not main_content_elements:
-                main_content_elements = [soup.find('body')] if soup.find('body') else [soup]
+            # Try semantic containers first, then fall back to body
+            main_elem = (
+                soup.find('article') or
+                soup.find('main') or
+                soup.find('div', role='main') or
+                soup.find('div', class_=re.compile(r'(article|content|post|entry|story|body)', re.I)) or
+                soup.find('body') or
+                soup
+            )
 
             temp_text = []
             word_count = 0
-            for main_elem in main_content_elements:
+            seen = set()
+            for tag in main_elem.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'td', 'span']):
                 if word_count >= total_word_count_limit:
                     break
-                for tag in main_elem.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'div']):
-                    text = re.sub(r'\s+', ' ', tag.get_text()).strip()
-                    if text:
-                        words = text.split()
-                        words_to_add = words[:total_word_count_limit - word_count]
-                        if words_to_add:
-                            temp_text.append(" ".join(words_to_add))
-                            word_count += len(words_to_add)
+                text = re.sub(r'\s+', ' ', tag.get_text()).strip()
+                if not text or len(text) < 20:
+                    continue
+                # Deduplicate (nested tags can repeat text)
+                if text in seen:
+                    continue
+                seen.add(text)
+                words = text.split()
+                words_to_add = words[:total_word_count_limit - word_count]
+                if words_to_add:
+                    temp_text.append(" ".join(words_to_add))
+                    word_count += len(words_to_add)
 
             text_content = '\n\n'.join(temp_text)
             if word_count >= total_word_count_limit:
