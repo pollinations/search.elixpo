@@ -109,7 +109,7 @@ class lixSearch:
                 </style>
             </head>
             <body>
-                <script id="api-reference" data-url="/openapi.yaml"></script>
+                <script id="api-reference" data-url="/openapi.json"></script>
                 <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@latest/latest.js"></script>
             </body>
             </html>
@@ -138,19 +138,30 @@ class lixSearch:
         self.app.route('/docs', methods=['GET'])(scalar_ui)
         self.app.route('/api/docs', methods=['GET'])(scalar_ui)
         
-        # OpenAPI spec endpoint
-        async def openapi_spec():
+        # OpenAPI spec endpoints
+        _openapi_spec_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'openapi.yaml')
+
+        async def openapi_spec_json():
             import yaml
-            spec_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'openapi.yaml')
             try:
-                with open(spec_path, 'r') as f:
+                with open(_openapi_spec_path, 'r') as f:
                     spec = yaml.safe_load(f)
                 return jsonify(spec)
             except Exception as e:
                 logger.error(f"[APP] Failed to load OpenAPI spec: {e}")
                 return jsonify({"error": "OpenAPI spec not found"}), 404
-        
-        self.app.route('/openapi.json', methods=['GET'])(openapi_spec)
+
+        async def openapi_spec_yaml():
+            try:
+                with open(_openapi_spec_path, 'r') as f:
+                    content = f.read()
+                return content, 200, {"Content-Type": "text/yaml; charset=utf-8"}
+            except Exception as e:
+                logger.error(f"[APP] Failed to load OpenAPI spec: {e}")
+                return "OpenAPI spec not found", 404
+
+        self.app.route('/openapi.json', methods=['GET'])(openapi_spec_json)
+        self.app.route('/openapi.yaml', methods=['GET'])(openapi_spec_yaml)
 
         async def surf_wrapper():
             return await surf.surf(self.pipeline_initialized)
