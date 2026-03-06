@@ -43,26 +43,64 @@ curl http://localhost/api/health         # via nginx
 
 ## Architecture
 
+### Network topology
+
+All internal services communicate over a private Docker network (`elixpo-network`). None of the internal 9xxx ports are published to the host — they are only reachable within the Docker network (via `expose`). The only externally reachable entry point is nginx.
+
 ```
-Nginx (:80) → lixsearch-app (:9002, N replicas, 10 Hypercorn workers each)
-                ├── Gateways (app/gateways/*.py)
-                ├── Pipeline (pipeline/lixsearch.py) — main async generator
-                │     ├── Tool execution (pipeline/optimized_tool_execution.py)
-                │     ├── RAG (ragService/)
-                │     └── LLM inference → Pollinations API
-                ├── Session/cache (sessions/, ragService/cacheCoordinator.py)
-                └── IPC client → ipc-service (:9510, singleton)
-                                   ├── CoreEmbeddingService (sentence-transformers)
-                                   ├── SearchAgentPool (Playwright text + image agents)
-                                   └── Chroma vector DB (:9001)
+Internet → Cloudflare → search.elixpo.com
+                              │
+                              ▼
+                     ┌─── nginx ───────────────────────────────┐
+                     │  :80    internal/dev (no API key)       │
+                     │  :10001 production  (API key required)  │
+                     │  :443   reserved (unused currently)     │
+                     └────────────┬────────────────────────────┘
+                                  │ proxy_pass (Docker internal)
+                                  ▼
+               lixsearch-app (:9002, N replicas, 10 Hypercorn workers each)
+                 ├── Gateways (app/gateways/*.py)
+                 ├── Pipeline (pipeline/lixsearch.py) — main async generator
+                 │     ├── Tool execution (pipeline/optimized_tool_execution.py)
+                 │     ├── RAG (ragService/)
+                 │     └── LLM inference → Pollinations API (external)
+                 ├── Session/cache (sessions/, ragService/cacheCoordinator.py)
+                 ├── PostgreSQL (:5432) — persistent session/conversation storage
+                 └── IPC client → ipc-service (:9510, singleton)
+                                    ├── CoreEmbeddingService (sentence-transformers)
+                                    ├── SearchAgentPool (Playwright text + image agents)
+                                    └── Chroma vector DB (:9001)
 Redis (:9530) shared across all containers:
   DB 0 — semantic query cache (5min TTL, per-session)
   DB 1 — URL embedding cache (24h TTL, global)
   DB 2 — session hot window (30min TTL, 20 msgs, LRU evicted to disk)
 ```
 
+### Ports & exposure
+
+| Service | Internal port | Published to host? | Purpose |
+|---------|--------------|-------------------|---------|
+| nginx | 80, 443, 10001 | **Yes** — 80:80, 443:443, 10001:10001 | Only external entry point |
+| lixsearch-app | 9002 | No (`expose` only) | Quart API workers |
+| ipc-service | 9510 | No (`expose` only) | Embedding model + Playwright pool |
+| chroma-server | 9001 | No (`expose` only) | Vector DB |
+| redis | 9530 | No (`expose` only) | Cache (3 DBs) |
+| postgres | 5432 | Yes — 5432:5432 (dev admin access) | Persistent storage |
+
+### Authentication
+
+- **Port 80** (nginx internal server): No API key required. Used for local dev and inter-service health checks.
+- **Port 10001** (nginx authenticated server): API key required via `X-API-Key` header or `?key=` query param. This is the production endpoint routed from `search.elixpo.com` through Cloudflare.
+- **Auth-exempt paths** (both ports): `/api/health`, `/docs`, `/api/docs`, `/openapi.json`, `/openapi.yaml`
+- **App-level auth**: `INTERNAL_API_KEY` env var in `before_request` middleware (`app/main.py`). Separate from the nginx API key — used for internal service-to-service calls.
+
 ### Request flow
-HTTP request → gateway (search.py / chat.py) → `run_elixposearch_pipeline()` async generator → query decomposition → tool routing → web_search/fetch/image_search/youtube → RAG retrieval → semantic cache check → LLM synthesis → SSE or JSON response.
+```
+User → Cloudflare → nginx:10001 (API key check) → app:9002 → gateway (search.py / chat.py)
+  → run_elixposearch_pipeline() async generator → query decomposition → tool routing
+  → web_search/fetch/image_search/youtube → RAG retrieval → semantic cache check
+  → LLM synthesis → SSE or JSON response
+```
 
 ### Conversation storage (two-tier hybrid)
 - **Hot**: Redis DB 2 — last 20 messages per session
@@ -100,13 +138,14 @@ HTTP request → gateway (search.py / chat.py) → `run_elixposearch_pipeline()`
 
 ## Docker Services
 
-| Service | Replicas | Port | Stateful? |
-|---------|----------|------|-----------|
-| nginx | 1 | 80 | no |
-| lixsearch-app | 1-5 (autoscale) | 9002 | no (shared volumes) |
-| ipc-service | 1 | 9510 | no |
-| chroma-server | 1 | 9001 | yes (embeddings-data) |
-| redis | 1 | 9530 | yes (redis-data) |
+| Service | Replicas | Port | Published? | Stateful? |
+|---------|----------|------|-----------|-----------|
+| nginx | 1 | 80, 443, 10001 | Yes (host-bound) | no |
+| lixsearch-app | 1-5 (autoscale) | 9002 | No (internal) | no (shared volumes) |
+| ipc-service | 1 | 9510 | No (internal) | no |
+| chroma-server | 1 | 9001 | No (internal) | yes (embeddings-data) |
+| redis | 1 | 9530 | No (internal) | yes (redis-data) |
+| postgres | 1 | 5432 | Yes (dev access) | yes (postgres-data) |
 
 ## Environment Variables (.env)
 
