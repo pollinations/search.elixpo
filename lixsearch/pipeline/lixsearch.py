@@ -272,7 +272,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     rag_context = "\n".join([r["metadata"]["text"] for r in retrieval_result.get("results", [])])
                     _rag_count = retrieval_result.get("count", 0)
                     logger.info(f"[Pipeline] Retrieved {_rag_count} chunks from vector store")
-                    rag_event = emit_event("INFO", f"<TASK>Found {_rag_count} relevant piece{'s' if _rag_count != 1 else ''} from prior knowledge</TASK>")
+                    rag_event = emit_event("INFO", f"<TASK>Recalling {_rag_count} related snippet{'s' if _rag_count != 1 else ''} from memory</TASK>")
                     if rag_event:
                         yield rag_event
             except asyncio.TimeoutError:
@@ -640,7 +640,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         )
                         _ingested_count = sum(1 for r in ingest_results if not isinstance(r, Exception))
                         if event_id and _ingested_count > 0:
-                            yield format_sse("INFO", f"<TASK>Indexed {_ingested_count} source{'s' if _ingested_count != 1 else ''} into knowledge base</TASK>")
+                            yield format_sse("INFO", f"<TASK>Memorizing {_ingested_count} source{'s' if _ingested_count != 1 else ''} for context</TASK>")
                             status_tracker.touch()
                     except asyncio.TimeoutError:
                         logger.warning("[INGESTION] Timeout reached, continuing anyway")
@@ -818,71 +818,90 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             if _stale_event:
                 yield _stale_event
 
-            try:
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        requests.post,
-                        POLLINATIONS_ENDPOINT,
-                        json=payload,
-                        headers=headers,
-                        timeout=20
-                    ),
-                    timeout=22.0
-                )
-                response.raise_for_status()
-                response_data = response.json()
-                logger.info(f"[SYNTHESIS] Raw API response status: {response.status_code}, response keys: {response_data.keys() if isinstance(response_data, dict) else 'unknown'}")
-                logger.debug(f"[SYNTHESIS] Full response data: {json.dumps(response_data, indent=2)[:500]}")
+            # Try synthesis up to 2 times (retry once on network failure)
+            _synthesis_attempts = 2
+            for _attempt in range(1, _synthesis_attempts + 1):
                 try:
-                    message = response_data["choices"][0]["message"]
-                    logger.debug(f"[SYNTHESIS] Message keys: {message.keys()}")
-                    logger.debug(f"[SYNTHESIS] Content value: {repr(message.get('content'))}")
-                    logger.debug(f"[SYNTHESIS] Tool calls: {message.get('tool_calls')}")
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            requests.post,
+                            POLLINATIONS_ENDPOINT,
+                            json=payload,
+                            headers=headers,
+                            timeout=45
+                        ),
+                        timeout=50.0
+                    )
+                    response.raise_for_status()
+                    response_data = response.json()
+                    logger.info(f"[SYNTHESIS] Raw API response status: {response.status_code}, response keys: {response_data.keys() if isinstance(response_data, dict) else 'unknown'}")
+                    logger.debug(f"[SYNTHESIS] Full response data: {json.dumps(response_data, indent=2)[:500]}")
+                    try:
+                        message = response_data["choices"][0]["message"]
+                        logger.debug(f"[SYNTHESIS] Message keys: {message.keys()}")
+                        logger.debug(f"[SYNTHESIS] Content value: {repr(message.get('content'))}")
+                        logger.debug(f"[SYNTHESIS] Tool calls: {message.get('tool_calls')}")
 
-                    final_message_content = message.get("content", "").strip()
+                        final_message_content = message.get("content", "").strip()
 
-                    if not final_message_content and "reasoning_content" in message:
-                        logger.warning("[SYNTHESIS] Model returned reasoning_content but empty content — ignoring internal reasoning")
+                        if not final_message_content and "reasoning_content" in message:
+                            logger.warning("[SYNTHESIS] Model returned reasoning_content but empty content — ignoring internal reasoning")
 
-                    # If model returned tool_calls during synthesis, the content (if any) is an
-                    # intermediate "I'll search more..." message, not a real synthesis. Discard it.
-                    if message.get("tool_calls"):
-                        logger.warning(f"[SYNTHESIS] Model returned tool_calls during synthesis — discarding intermediate content: {final_message_content[:100] if final_message_content else 'EMPTY'}")
-                        final_message_content = ""
+                        # If model returned tool_calls during synthesis, the content (if any) is an
+                        # intermediate "I'll search more..." message, not a real synthesis. Discard it.
+                        if message.get("tool_calls"):
+                            logger.warning(f"[SYNTHESIS] Model returned tool_calls during synthesis — discarding intermediate content: {final_message_content[:100] if final_message_content else 'EMPTY'}")
+                            final_message_content = ""
 
-                    if not final_message_content:
-                        logger.error(f"[SYNTHESIS] API returned empty content after all fallbacks. Full response: {response_data}")
-                        final_message_content = f"I processed your query about '{user_query}'."
-                        if collected_sources:
-                            final_message_content += f"\n\nRelevant sources found:\n" + "\n".join([f"- {src}" for src in collected_sources[:5]])
-                    else:
-                        logger.info(f"[SYNTHESIS] Successfully extracted content. Length: {len(final_message_content)}")
-                except (KeyError, IndexError, TypeError) as e:
-                    logger.error(f"[SYNTHESIS] Failed to extract content from response: {e}")
-                    logger.error(f"[SYNTHESIS] Full response: {response_data}")
-                    final_message_content = f"I gathered {len(collected_sources)} relevant sources about '{user_query}'."
+                        if not final_message_content:
+                            logger.error(f"[SYNTHESIS] API returned empty content after all fallbacks. Full response: {response_data}")
+                        else:
+                            logger.info(f"[SYNTHESIS] Successfully extracted content. Length: {len(final_message_content)}")
+                    except (KeyError, IndexError, TypeError) as e:
+                        logger.error(f"[SYNTHESIS] Failed to extract content from response: {e}")
+                        logger.error(f"[SYNTHESIS] Full response: {response_data}")
+                    # If we got here (no exception from request), break out of retry loop
+                    break
+                except asyncio.TimeoutError:
+                    logger.error(f"[SYNTHESIS TIMEOUT] Request timed out (attempt {_attempt}/{_synthesis_attempts})")
+                except requests.exceptions.HTTPError as http_err:
+                    logger.error(f"[SYNTHESIS HTTP ERROR] attempt {_attempt}: {http_err.response.status_code} - {str(http_err)[:ERROR_MESSAGE_TRUNCATE]}")
+                except requests.exceptions.RequestException as req_err:
+                    logger.error(f"[SYNTHESIS REQUEST ERROR] attempt {_attempt}: {type(req_err).__name__}: {str(req_err)[:ERROR_MESSAGE_TRUNCATE]}")
+                except Exception as e:
+                    logger.error(f"[SYNTHESIS ERROR] attempt {_attempt}: {type(e).__name__}: {str(e)[:ERROR_MESSAGE_TRUNCATE]}", exc_info=True)
+
+                # If first attempt failed, wait briefly before retry
+                if _attempt < _synthesis_attempts:
+                    logger.info("[SYNTHESIS] Retrying synthesis after brief delay...")
+                    await asyncio.sleep(1.5)
+
+            # Build meaningful fallback from tool outputs if synthesis produced nothing
+            if not final_message_content:
+                logger.warning("[SYNTHESIS] All attempts failed — building fallback from gathered tool context")
+                _tool_snippets = []
+                for m in messages:
+                    if m.get("role") == "tool" and m.get("name") == "fetch_full_text":
+                        _content = m.get("content", "")
+                        if _content and not _content.startswith("[") and len(_content) >= FETCH_MIN_USEFUL_CHARS:
+                            _tool_snippets.append(_content[:300])
+                    elif m.get("role") == "tool" and m.get("name") == "web_search":
+                        pass  # URLs are already in collected_sources
+
+                if _tool_snippets:
+                    # We have actual content from fetched pages — stitch a minimal answer
+                    final_message_content = f"Here's what I found about **{user_query}**:\n\n"
+                    for snippet in _tool_snippets[:3]:
+                        final_message_content += f"> {snippet.strip()}\n\n"
+                elif rag_context:
+                    final_message_content = f"Based on available context for **{user_query}**:\n\n"
+                    for chunk in rag_context.split("\n")[:5]:
+                        if chunk.strip():
+                            final_message_content += f"> {chunk.strip()[:250]}\n\n"
+                else:
+                    final_message_content = f"I searched for information about **{user_query}** but couldn't generate a complete answer."
                     if collected_sources:
-                        final_message_content += f"\n\nRelevant sources:\n" + "\n".join([f"- {src}" for src in collected_sources[:5]])
-            except asyncio.TimeoutError:
-                logger.error("[SYNTHESIS TIMEOUT] Request timed out")
-                final_message_content = f"I found relevant information about '{user_query}':"
-                if collected_sources:
-                    final_message_content += f"\n\n{', '.join(collected_sources[:3])}"
-            except requests.exceptions.HTTPError as http_err:
-                logger.error(f"[SYNTHESIS HTTP ERROR] Status Code: {http_err.response.status_code} - {str(http_err)[:ERROR_MESSAGE_TRUNCATE]}")
-                final_message_content = f"I found relevant information about '{user_query}':"
-                if collected_sources:
-                    final_message_content += f"\n\n{', '.join(collected_sources[:3])}"
-            except requests.exceptions.RequestException:
-                logger.error("[SYNTHESIS REQUEST ERROR]")
-                final_message_content = f"I found relevant information about '{user_query}':"
-                if collected_sources:
-                    final_message_content += f"\n\n{', '.join(collected_sources[:3])}"
-            except Exception as e:
-                logger.error(f"[SYNTHESIS ERROR] {type(e).__name__}: {str(e)[:ERROR_MESSAGE_TRUNCATE]}", exc_info=True)
-                final_message_content = f"I found relevant information about '{user_query}':"
-                if collected_sources:
-                    final_message_content += f"\n\n{', '.join(collected_sources[:5])}"
+                        final_message_content += " Here are the sources I found that may help:"
 
         # ==============================
         # FINAL RESPONSE FORMATTING

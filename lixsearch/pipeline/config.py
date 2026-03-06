@@ -61,7 +61,7 @@ LEAKED_TOOL_RE = re.compile(
     re.IGNORECASE,
 )
 
-LLM_MODEL = "kimi" # or kimi => these two models has performed the best 
+LLM_MODEL = "gemini-fast" # or kimi => these two models has performed the best 
 IMAGE_MODEL = "zimage" 
 VISION_MODEL = "gemini-fast"
 RESPONSE_MODEL = "lixsearch"
