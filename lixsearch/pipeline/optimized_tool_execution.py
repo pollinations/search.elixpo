@@ -19,7 +19,6 @@ from urllib.parse import urlparse
 
 
 def _display_url(url: str, max_len: int = 40) -> str:
-    """Extract a short display label from a URL (domain + truncated path)."""
     try:
         parsed = urlparse(url)
         domain = parsed.netloc.replace("www.", "")
@@ -51,11 +50,13 @@ async def optimized_tool_execution(function_name: str, function_args: dict, memo
             use_window = function_args.get("use_window", True)
             threshold = function_args.get("similarity_threshold")
 
+            web_event = emit_event_func("INFO", "<TASK>Checking previous conversations</TASK>")
+            if web_event:
+                yield web_event
+
             if "conversation_cache" not in memoized_results:
                 yield "[CACHE] No conversation cache available"
                 return
-
-            # Compute embedding via IPC service (model already loaded there – no local load)
             precomputed_embedding = None
             try:
                 from ipcService.coreServiceManager import get_core_embedding_service
@@ -88,6 +89,9 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                 memoized_results["cache_hit"] = True
                 memoized_results["cached_response"] = cached_response
                 logger.info(f"[Pipeline] Cache hit with similarity: {similarity_score:.2%}")
+                hit_event = emit_event_func("INFO", "<TASK>Found a relevant previous answer</TASK>")
+                if hit_event:
+                    yield hit_event
                 yield result
             else:
                 msg = f"[CACHE] No match found (best similarity: {similarity_score:.2%}). Proceeding with RAG/web search..."
@@ -97,6 +101,9 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
 
         elif function_name == "get_session_conversation_history":
             logger.info("[Pipeline] Get session conversation history tool called")
+            history_event = emit_event_func("INFO", "<TASK>Reviewing conversation history</TASK>")
+            if history_event:
+                yield history_event
             session_id = function_args.get("session_id")
             include_metadata = function_args.get("include_metadata", True)
             use_full_history = function_args.get("use_full_history", False)
@@ -226,6 +233,9 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                 memoized_results["generated_images"].append(image_url)
                 result = f"Generated image for prompt: '{prompt}'\nImage URL: {image_url}"
                 logger.info(f"Generated image: {image_url}")
+                done_event = emit_event_func("INFO", "<TASK>Image generated successfully</TASK>")
+                if done_event:
+                    yield done_event
                 yield result
             except Exception as e:
                 logger.error(f"Image generation error: {e}")
@@ -267,6 +277,9 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                     if url.startswith("http"):
                         url_context += f"\t{url}\n"
                 
+                done_event = emit_event_func("INFO", f"<TASK>Found {len(image_urls)} image{'s' if len(image_urls) != 1 else ''}</TASK>")
+                if done_event:
+                    yield done_event
                 yield (f"Found {len(image_urls)} relevant images:\n{url_context}\n", image_urls)
             except Exception as e:
                 logger.error(f"Failed to process image search results: {e}")
@@ -280,6 +293,10 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
             metadata = await youtubeMetadata(url)
             result = f"YouTube Metadata:\n{metadata if metadata else '[No metadata available]'}"
             memoized_results["youtube_metadata"][url] = result
+            if metadata:
+                done_event = emit_event_func("INFO", f"<TASK>Retrieved video details</TASK>")
+                if done_event:
+                    yield done_event
             yield result
 
         elif function_name == "transcribe_audio":
@@ -294,7 +311,8 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                 result = await transcribe_audio(url, full_transcript=False, query=search_query)
                 transcript_text = f"YouTube Transcript:\n{result if result else '[No transcript available]'}"
                 memoized_results["youtube_transcripts"][url] = transcript_text
-                done_event = emit_event_func("INFO", f"<TASK>Transcription complete</TASK>")
+                _word_count = len(result.split()) if result else 0
+                done_event = emit_event_func("INFO", f"<TASK>Transcribed ~{_word_count} words from video</TASK>")
                 if done_event:
                     yield done_event
                 yield transcript_text

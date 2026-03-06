@@ -210,6 +210,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     yield image_event
                 image_description = await describe_image(user_image)
                 logger.info(f"[Pipeline] Image description generated: {len(image_description)} chars")
+                done_event = emit_event("INFO", "<TASK>Image analysis complete</TASK>")
+                if done_event:
+                    yield done_event
                 if event_id:
                     chunk_size = 80
                     for i in range(0, len(image_description), chunk_size):
@@ -233,6 +236,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 image_analysis_result = await replyFromImage(user_image, user_query)
                 image_context_provided = True
                 logger.info(f"[Pipeline] Image analysis done: {len(image_analysis_result)} chars")
+                done_event = emit_event("INFO", "<TASK>Image analyzed in context of your question</TASK>")
+                if done_event:
+                    yield done_event
             except Exception:
                 logger.warning("[Pipeline] Failed to analyze image")
                 image_context_provided = False
@@ -264,7 +270,11 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 )
                 if retrieval_result.get("count", 0) > 0:
                     rag_context = "\n".join([r["metadata"]["text"] for r in retrieval_result.get("results", [])])
-                    logger.info(f"[Pipeline] Retrieved {retrieval_result.get('count', 0)} chunks from vector store")
+                    _rag_count = retrieval_result.get("count", 0)
+                    logger.info(f"[Pipeline] Retrieved {_rag_count} chunks from vector store")
+                    rag_event = emit_event("INFO", f"<TASK>Found {_rag_count} relevant piece{'s' if _rag_count != 1 else ''} from prior knowledge</TASK>")
+                    if rag_event:
+                        yield rag_event
             except asyncio.TimeoutError:
                 logger.warning("[Pipeline] Vector store retrieval timed out (3s), continuing without context")
             except Exception:
