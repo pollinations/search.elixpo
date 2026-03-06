@@ -12,7 +12,7 @@ from sessions.main import get_session_manager
 from ragService.main import get_retrieval_system
 from chatEngine.main import initialize_chat_engine
 from commons.requestID import RequestIDMiddleware
-from app.gateways import health, search, session, chat, stats, websocket
+from app.gateways import health, search, session, chat, stats, websocket, surf, discover
 logger = logging.getLogger("lixsearch-api")
 
 
@@ -44,11 +44,28 @@ class lixSearch:
         self._register_lifecycle_hooks()
     
     def _setup_cors(self):
-        cors(self.app)
+        allowed_origins = [
+            "http://localhost:3000",
+            "https://search.elixpo.com",
+            "https://www.search.elixpo.com",
+        ]
+        cors(self.app, allow_origin=allowed_origins)
     
     def _setup_middleware(self):
         middleware = RequestIDMiddleware(self.app.asgi_app)
         self.app.asgi_app = middleware
+
+        internal_key = os.getenv('INTERNAL_API_KEY', '')
+
+        @self.app.before_request
+        async def verify_internal_key():
+            if request.path == '/api/health':
+                return
+            if not internal_key:
+                return
+            key = request.headers.get('X-Internal-Key', '')
+            if key != internal_key:
+                return jsonify({"error": "unauthorized"}), 401
     
     def _register_routes(self):
         async def health_check_wrapper():
@@ -134,6 +151,15 @@ class lixSearch:
                 return jsonify({"error": "OpenAPI spec not found"}), 404
         
         self.app.route('/openapi.json', methods=['GET'])(openapi_spec)
+
+        async def surf_wrapper():
+            return await surf.surf(self.pipeline_initialized)
+
+        async def discover_generate_wrapper():
+            return await discover.generate_discover(self.pipeline_initialized)
+
+        self.app.route('/api/surf', methods=['POST', 'GET'])(surf_wrapper)
+        self.app.route('/api/discover/generate', methods=['POST'])(discover_generate_wrapper)
     
     def _register_error_handlers(self):
         @self.app.errorhandler(404)
@@ -161,6 +187,14 @@ class lixSearch:
                     session_manager = get_session_manager()
                     retrieval_system = get_retrieval_system()
                     initialize_chat_engine(session_manager, retrieval_system)
+
+                    # Pre-connect to IPC so first request doesn't pay the cost
+                    try:
+                        from ipcService.coreServiceManager import CoreServiceManager
+                        CoreServiceManager.get_instance()
+                        logger.info("[APP] IPC CoreServiceManager pre-connected")
+                    except Exception as e:
+                        logger.warning(f"[APP] IPC pre-connect failed (will retry on first request): {e}")
 
                     self.pipeline_initialized = True
                     logger.info("[APP] lixSearch initialized and ready")

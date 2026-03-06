@@ -65,7 +65,7 @@ class URLEmbeddingCache:
 
         try:
             self.redis_client = create_redis_client(host=redis_host, port=redis_port, db=redis_db)
-            logger.info(f"[semanticCacheRedis.URLEmbeddingCache] session={session_id} connected to Redis @ {redis_host}:{redis_port} (db={redis_db})")
+            logger.debug(f"[semanticCacheRedis.URLEmbeddingCache] session={session_id} ready (db={redis_db})")
         except Exception as e:
             logger.error(f"[semanticCacheRedis.URLEmbeddingCache] session={session_id} Failed to connect: {e}")
             raise
@@ -246,10 +246,7 @@ class SemanticCacheRedis:
 
         try:
             self.redis_client = create_redis_client(host=redis_host, port=redis_port, db=redis_db)
-            logger.info(
-                f"[semanticCacheRedis.SemanticCacheRedis] session={session_id} connected to Redis @ "
-                f"{redis_host}:{redis_port} (db={redis_db}, ttl={ttl_seconds}s, threshold={similarity_threshold})"
-            )
+            logger.debug(f"[semanticCacheRedis.SemanticCacheRedis] session={session_id} ready (db={redis_db})")
         except Exception as e:
             logger.error(f"[semanticCacheRedis.SemanticCacheRedis] session={session_id} Failed to connect: {e}")
             raise

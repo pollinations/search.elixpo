@@ -11,6 +11,7 @@ __pycache__/
 *.pyc
 minikube-linux-amd64
 pip_cache/
+.next
 searchSessions/
 tmp_cache/
 audio_cache/

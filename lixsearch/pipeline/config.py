@@ -10,7 +10,6 @@ MAX_LINKS_TO_TAKE = 10
 MIN_LINKS_TO_TAKE = 1
 MAX_LINKS_TO_TAKE_DETAILED = 12
 MIN_LINKS_TO_TAKE_DETAILED = 6
-AUDIO_TRANSCRIBE_SIZE = "small"
 BASE_CACHE_DIR = "./data/audio_cache"
 
 isHeadless = True
@@ -36,12 +35,19 @@ SEARCH_DEPTH_BOUNDS = {
 
 
 INTERNAL_LEAK_PATTERNS = [
-    r"\bthe user wants to know\b",
+    r"\bthe user wants\b",
+    r"\bthe user is asking\b",
     r"\bi should\b",
-    r"\blet me\b",
+    r"\bi need to\b",
+    r"\bi will (search|fetch|look|check|use|find|retrieve)\b",
+    r"\blet me (search|fetch|look|check|find|retrieve|get)\b",
     r"\bfirst priority\b",
+    r"\bbased on the rag\b",
+    r"\bbased on the (web search|search results|tool)\b",
     r"\bquery_conversation_cache\b",
     r"\btool(?:s)?\b.*\b(use|call|execute)\b",
+    r"\b(web_search|fetch_full_text|cache_hit|cache_miss|semantic_cache)\b",
+    r"^(step \d+|first,|second,|next,|finally,)",
 ]
 
 
@@ -55,26 +61,26 @@ LEAKED_TOOL_RE = re.compile(
     re.IGNORECASE,
 )
 
-LLM_MODEL = "kimi"
-IMAGE_MODEL = "zimage"
+LLM_MODEL = "gemini-fast" # or kimi => these two models has performed the best 
+IMAGE_MODEL = "zimage" 
 VISION_MODEL = "gemini-fast"
 RESPONSE_MODEL = "lixsearch"
-LLM_MAX_TOKENS = 3000
+LLM_MAX_TOKENS = 1500
 LLM_MAX_TOKENS_DETAILED = 4096
 LLM_TEMPERATURE = 0.7
 LLM_TOP_P = 1.0
 
-TOPIC_DECOMPOSITION_MAX_PARTS = int(os.getenv("TOPIC_DECOMPOSITION_MAX_PARTS", "4"))
+TOPIC_DECOMPOSITION_MAX_PARTS = 4
 TOPIC_DECOMPOSITION_TIMEOUT = int(os.getenv("TOPIC_DECOMPOSITION_TIMEOUT", "25"))
 
 # Deep Search mode
-DEEP_SEARCH_MAX_SUB_QUERIES = int(os.getenv("DEEP_SEARCH_MAX_SUB_QUERIES", "5"))
-DEEP_SEARCH_MAX_ITERATIONS_PER_SUB = int(os.getenv("DEEP_SEARCH_MAX_ITERATIONS_PER_SUB", "2"))
-DEEP_SEARCH_MAX_TOKENS_PER_SUB = int(os.getenv("DEEP_SEARCH_MAX_TOKENS_PER_SUB", "2000"))
-DEEP_SEARCH_FINAL_SYNTHESIS_MAX_TOKENS = int(os.getenv("DEEP_SEARCH_FINAL_SYNTHESIS_MAX_TOKENS", "5000"))
+DEEP_SEARCH_MAX_SUB_QUERIES = 5
+DEEP_SEARCH_MAX_ITERATIONS_PER_SUB = 2
+DEEP_SEARCH_MAX_TOKENS_PER_SUB = 2000
+DEEP_SEARCH_FINAL_SYNTHESIS_MAX_TOKENS = 4096
 DEEP_SEARCH_MIN_LINKS_PER_SUB = 2
 DEEP_SEARCH_MAX_LINKS_PER_SUB = 6
-DEEP_SEARCH_TIMEOUT_PER_SUB = int(os.getenv("DEEP_SEARCH_TIMEOUT_PER_SUB", "60"))
+DEEP_SEARCH_TIMEOUT_PER_SUB = 60
 DEEP_SEARCH_GATING_MIN_COMPLEXITY = "MODERATE"
 
 SEARCH_MAX_RESULTS = 8
@@ -175,33 +181,49 @@ REDIS_SOCKET_KEEPALIVE = True
 REDIS_KEY_PREFIX = "elixpo"
 
 
+_redis_pools = {}  # (host, port, db) → ConnectionPool
+_redis_pools_lock = __import__("threading").Lock()
+
+
 def create_redis_client(host=None, port=None, db=0, **kwargs):
     import redis as _redis
 
     host = host or REDIS_HOST
     port = port or REDIS_PORT
+    port = int(port)
 
-    common = dict(
-        host=host,
-        port=int(port),
-        db=db,
-        decode_responses=kwargs.pop("decode_responses", False),
-        socket_connect_timeout=kwargs.pop("socket_connect_timeout", REDIS_SOCKET_CONNECT_TIMEOUT),
-        socket_keepalive=kwargs.pop("socket_keepalive", REDIS_SOCKET_KEEPALIVE),
-        **kwargs,
-    )
+    pool_key = (host, port, db)
 
-    if REDIS_PASSWORD:
-        try:
-            client = _redis.Redis(password=REDIS_PASSWORD, **common)
-            client.ping()
-            return client
-        except _redis.exceptions.AuthenticationError:
-            pass  
+    with _redis_pools_lock:
+        if pool_key not in _redis_pools:
+            pool_kwargs = dict(
+                host=host,
+                port=port,
+                db=db,
+                decode_responses=kwargs.pop("decode_responses", False),
+                socket_connect_timeout=kwargs.pop("socket_connect_timeout", REDIS_SOCKET_CONNECT_TIMEOUT),
+                socket_keepalive=kwargs.pop("socket_keepalive", REDIS_SOCKET_KEEPALIVE),
+                max_connections=SEMANTIC_CACHE_REDIS_POOL_SIZE,
+            )
 
-    client = _redis.Redis(password=None, **common)
-    client.ping()
-    return client
+            # Try with password first, then without
+            password = REDIS_PASSWORD
+            if password:
+                try:
+                    pool = _redis.ConnectionPool(password=password, **pool_kwargs)
+                    test_client = _redis.Redis(connection_pool=pool)
+                    test_client.ping()
+                    _redis_pools[pool_key] = pool
+                except _redis.exceptions.AuthenticationError:
+                    password = None
+
+            if pool_key not in _redis_pools:
+                pool = _redis.ConnectionPool(password=None, **pool_kwargs)
+                test_client = _redis.Redis(connection_pool=pool)
+                test_client.ping()
+                _redis_pools[pool_key] = pool
+
+    return _redis.Redis(connection_pool=_redis_pools[pool_key])
 
 SEMANTIC_CACHE_REDIS_HOST = REDIS_HOST
 SEMANTIC_CACHE_REDIS_PORT = REDIS_PORT
@@ -215,7 +237,7 @@ URL_EMBEDDING_CACHE_TTL_SECONDS = 86400
 URL_EMBEDDING_CACHE_BATCH_SIZE = 100
 
 SESSION_CONTEXT_WINDOW_REDIS_DB = 2
-SESSION_CONTEXT_WINDOW_TTL_SECONDS = 1800
+SESSION_CONTEXT_WINDOW_TTL_SECONDS = 3600  # 1h — must be > SESSION_LRU_EVICT_AFTER_MINUTES (30min) to avoid race condition
 SESSION_CONTEXT_WINDOW_SIZE = 20
 SESSION_CONTEXT_WINDOW_MAX_TOKENS = None
 

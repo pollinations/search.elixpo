@@ -1,20 +1,16 @@
 import os
-from pipeline.config import BASE_CACHE_DIR, AUDIO_TRANSCRIBE_SIZE, ERROR_MESSAGE_TRUNCATE
-from pytubefix import AsyncYouTube
-from pydub import AudioSegment
-from loguru import logger
-import torch
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import asyncio
 import re
 import time
+import xml.etree.ElementTree as ET
 from urllib.parse import urlparse, parse_qs
 from typing import Optional
-from faster_whisper import WhisperModel
+from loguru import logger
+from pytubefix import YouTube
+from pipeline.config import ERROR_MESSAGE_TRUNCATE, MAX_TRANSCRIPT_WORD_COUNT
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-logger.info(f"[YoutubeDetails] Loading faster-whisper model {AUDIO_TRANSCRIBE_SIZE} on {device}")
-whisper_model = WhisperModel(AUDIO_TRANSCRIBE_SIZE, device=device, compute_type="auto")
 
 def _init_ipc_manager(max_retries: int = 3, retry_delay: float = 1.0) -> bool:
     """Initialize IPC connection using centralized manager."""
@@ -31,6 +27,7 @@ def _init_ipc_manager(max_retries: int = 3, retry_delay: float = 1.0) -> bool:
         logger.warning(f"[YoutubeDetails] Could not initialize IPC connection: {e}")
         return False
 
+
 async def youtubeMetadata(url: str):
     """Get YouTube metadata via IPC service."""
     if not _init_ipc_manager():
@@ -45,13 +42,8 @@ async def youtubeMetadata(url: str):
         logger.error(f"[YoutubeDetails] Error fetching YouTube metadata: {e}")
         return None
 
-def ensure_cache_dir(video_id):
-    path = os.path.join(BASE_CACHE_DIR, video_id)
-    os.makedirs(path, exist_ok=True)
-    return path
 
 def get_youtube_video_id(url):
-    print("[INFO] Getting Youtube video ID")
     parsed_url = urlparse(url)
     if "youtube.com" in parsed_url.netloc:
         video_id = parse_qs(parsed_url.query).get('v')
@@ -69,141 +61,129 @@ def get_youtube_video_id(url):
             return video_id
     return None
 
-async def download_audio(url):
-    video_id = get_youtube_video_id(url)
-    cache_folder = ensure_cache_dir(video_id)
-    wav_path = os.path.join(cache_folder, f"{video_id}.wav")
-    if os.path.exists(wav_path):
-        logger.info(f"[Download] Using cached audio: {wav_path}")
-        return wav_path
-    
-    yt = AsyncYouTube(url, use_oauth=True, allow_oauth_cache=True)
-    streams = await yt.streams()
-    audio_streams = streams.filter(only_audio=True)
-    preferred_codecs = ["opus", "aac", "mp4a.40.2", "vorbis"]
-    audio_streams = [s for s in audio_streams if s.audio_codec in preferred_codecs]
-    audio_stream = max(audio_streams, key=lambda s: int(s.abr.replace("kbps", "")))
-    extension = audio_stream.mime_type.split("/")[1]
-    tmp_path = os.path.join(cache_folder, f"{video_id}.{extension}")
-    audio_stream.download(output_path=os.path.dirname(tmp_path), filename=os.path.basename(tmp_path))
-    audio = AudioSegment.from_file(tmp_path, format=extension)
-    audio.export(wav_path, format="wav")
-    os.remove(tmp_path)
-    logger.info(f"[Download] Audio saved to {wav_path}")
-    return wav_path
+
+def _parse_caption_xml(xml_text: str) -> str:
+    """Parse YouTube caption XML into plain text."""
+    try:
+        root = ET.fromstring(xml_text)
+        texts = []
+        for elem in root.iter('text'):
+            t = elem.text
+            if t:
+                # Unescape HTML entities
+                t = t.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+                t = t.replace('&#39;', "'").replace('&quot;', '"')
+                t = t.replace('\n', ' ')
+                texts.append(t.strip())
+        return ' '.join(texts)
+    except ET.ParseError:
+        # If not XML, return as-is (might be SRT or plain text)
+        # Strip SRT formatting
+        lines = xml_text.strip().split('\n')
+        text_lines = []
+        for line in lines:
+            line = line.strip()
+            # Skip SRT sequence numbers and timestamps
+            if re.match(r'^\d+$', line):
+                continue
+            if re.match(r'\d{2}:\d{2}:\d{2}', line):
+                continue
+            if line:
+                text_lines.append(line)
+        return ' '.join(text_lines)
+
+
+def _fetch_captions_sync(url: str) -> Optional[str]:
+    """Fetch captions using pytubefix (synchronous). Returns transcript text or None."""
+    yt = YouTube(url, use_oauth=True, allow_oauth_cache=True)
+    captions = yt.captions
+
+    if not captions:
+        logger.info(f"[Transcribe] No captions available for {url}")
+        return None
+
+    # Prefer manual English, then auto-generated English, then any available
+    caption = None
+    for lang_code in ['en', 'a.en', 'en-US', 'en-GB']:
+        caption = captions.get(lang_code)
+        if caption:
+            logger.info(f"[Transcribe] Found caption: {lang_code}")
+            break
+
+    if not caption:
+        # Try any English variant
+        for cap in captions:
+            if cap.code and cap.code.startswith('en'):
+                caption = cap
+                logger.info(f"[Transcribe] Found English variant caption: {cap.code}")
+                break
+
+    if not caption:
+        # Take first available caption
+        caption = list(captions)[0] if captions else None
+        if caption:
+            logger.info(f"[Transcribe] Using first available caption: {caption.code}")
+
+    if not caption:
+        return None
+
+    xml_text = caption.xml_captions
+    if not xml_text:
+        return None
+
+    transcript = _parse_caption_xml(xml_text)
+    return transcript if transcript.strip() else None
+
 
 async def transcribe_audio(
     url: str,
     full_transcript: bool = False,
     query: Optional[str] = None,
-    timeout: float = 300.0
+    timeout: float = 30.0
 ) -> str:
+    """Get YouTube video transcript via captions."""
     start_time = time.perf_counter()
     video_id = get_youtube_video_id(url)
     if not video_id:
         logger.error(f"[Transcribe] Invalid YouTube URL: {url}")
         return "[ERROR] Unable to extract video ID from URL"
-    
-    try:
-        logger.info(f"[Transcribe] Starting transcription for video {video_id}")
-        
-        if _init_ipc_manager() and core_service is not None:
-            try:
-                logger.info(f"[Transcribe] Using IPC CoreEmbeddingService for transcription")
-                audio_path = await download_audio(url)
-                transcription = await asyncio.to_thread(
-                    core_service.transcribe_audio, 
-                    audio_path
-                )
-                metadata = await youtubeMetadata(url)
-                elapsed = time.perf_counter() - start_time
-                logger.info(f"[Transcribe] IPC transcription completed in {elapsed:.2f}s")
-                if metadata:
-                    transcription = f"{transcription}\n\n[Source: {metadata}]"
-                return transcription
-            except Exception as e:
-                logger.warning(f"[Transcribe] IPC transcription failed: {e}. Falling back to local faster-whisper")
-        
-        logger.info(f"[Transcribe] Using local faster-whisper model on {device}")
-        audio_path = await download_audio(url)
-        
-        segments, info = await asyncio.to_thread(
-            whisper_model.transcribe,
-            audio_path,
-            language="en",
-            beam_size=5
-        )
-        
-        transcription = " ".join([segment.text for segment in segments])
-        
-        metadata = await youtubeMetadata(url)
-        elapsed = time.perf_counter() - start_time
-        logger.info(f"[Transcribe] Local transcription completed in {elapsed:.2f}s")
-        
-        if metadata:
-            transcription = f"{transcription}\n\n[Source: {metadata}]"
-        
-        return transcription
-    
-    except asyncio.TimeoutError:
-        logger.error(f"[Transcribe] Transcription timed out after {timeout}s")
-        return "[TIMEOUT] Video transcription took too long"
-    except Exception as e:
-        logger.error(f"[Transcribe] Transcription failed: {e}")
-        return f"[ERROR] Failed to transcribe: {str(e)[:ERROR_MESSAGE_TRUNCATE]}"
 
-async def transcribe_long(
-    url: str,
-    chunk_sec: int = 120,
-    beam_size: int = 5,
-    query: Optional[str] = None
-) -> str:
-    start_time = time.perf_counter()
-    video_id = get_youtube_video_id(url)
-    
-    if not video_id:
-        logger.error(f"[TranscribeLong] Invalid YouTube URL: {url}")
-        return "[ERROR] Unable to extract video ID from URL"
-    
     try:
-        logger.info(f"[TranscribeLong] Starting long-form transcription for video {video_id}")
-        audio_path = await download_audio(url)
-        
-        if not os.path.exists(audio_path):
-            raise FileNotFoundError(f"Audio file not found: {audio_path}")
-        
-        logger.info(f"[TranscribeLong] Using faster-whisper on {device} with beam_size={beam_size}")
-        segments, info = await asyncio.to_thread(
-            whisper_model.transcribe,
-            audio_path,
-            language="en",
-            beam_size=beam_size,
-            vad_filter=True
+        logger.info(f"[Transcribe] Fetching captions for video {video_id}")
+
+        transcript = await asyncio.wait_for(
+            asyncio.to_thread(_fetch_captions_sync, url),
+            timeout=timeout
         )
-        
-        transcription = " ".join([segment.text for segment in segments])
-        
+
+        if not transcript:
+            logger.warning(f"[Transcribe] No captions found for {video_id}")
+            return "[INFO] No captions/subtitles available for this video"
+
+        # Trim to word limit
+        words = transcript.split()
+        if len(words) > MAX_TRANSCRIPT_WORD_COUNT:
+            transcript = ' '.join(words[:MAX_TRANSCRIPT_WORD_COUNT]) + '...'
+            logger.info(f"[Transcribe] Trimmed transcript to {MAX_TRANSCRIPT_WORD_COUNT} words")
+
         metadata = await youtubeMetadata(url)
-        
         elapsed = time.perf_counter() - start_time
-        logger.info(f"[TranscribeLong] Transcription completed in {elapsed:.2f}s")
-        
-        response = f"{transcription}\n\n---\n**Transcription Stats:**\n"
-        response += f"- Duration: {info.duration:.1f}s\n"
-        response += f"- Language: {info.language}\n"
-        response += f"- Processing time: {elapsed:.2f}s\n"
-        
+        logger.info(f"[Transcribe] Captions fetched in {elapsed:.2f}s ({len(words)} words)")
+
         if metadata:
-            response += f"- Source: {metadata}\n"
-        
-        return response
-    
+            transcript = f"{transcript}\n\n[Source: {metadata}]"
+
+        return transcript
+
+    except asyncio.TimeoutError:
+        logger.error(f"[Transcribe] Caption fetch timed out after {timeout}s")
+        return "[TIMEOUT] Caption fetch took too long"
     except Exception as e:
-        logger.error(f"[TranscribeLong] Transcription failed: {e}")
-        return f"[ERROR] Failed to transcribe: {str(e)[:ERROR_MESSAGE_TRUNCATE]}"
+        logger.error(f"[Transcribe] Caption fetch failed: {e}")
+        return f"[ERROR] Failed to get transcript: {str(e)[:ERROR_MESSAGE_TRUNCATE]}"
+
 
 if __name__ == "__main__":
     url = "https://www.youtube.com/watch?v=FLal-KvTNAQ"
-    full_transcript = True
-    query = None
-    transcript = asyncio.run(transcribe_audio(url, full_transcript, query))
+    transcript = asyncio.run(transcribe_audio(url))
+    print(transcript)

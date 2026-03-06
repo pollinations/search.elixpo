@@ -107,7 +107,7 @@ class ChatEngine:
             from commons.searching_based import webSearch
             from searching.fetch_full_text import fetch_full_text
             
-            search_results = webSearch(final_search_query)
+            search_results = await webSearch(final_search_query)
             if isinstance(search_results, list):
                 fetch_urls = search_results[:5]
             else:
