@@ -489,13 +489,30 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             "name": result["name"],
                             "content": str(result["result"]) if result["result"] else "No result"
                         })
-                logger.info(f"[Pipeline] Web search complete: {sum(1 for r in web_search_results if not isinstance(r, Exception))} successful, {len(collected_sources)} sources")
+                successful_searches = sum(1 for r in web_search_results if not isinstance(r, Exception))
+                logger.info(f"[Pipeline] Web search complete: {successful_searches} successful, {len(collected_sources)} sources")
+                if event_id and collected_sources:
+                    yield format_sse("INFO", f"<TASK>Found {len(collected_sources)} sources</TASK>")
+                    status_tracker.touch()
 
             # --- Other tools ---
             for idx, tool_call in enumerate(other_calls):
                 function_name = tool_call["function"]["name"]
                 function_args = json.loads(tool_call["function"]["arguments"])
                 logger.info(f"[Sequential Tool #{idx+1}] {function_name}")
+
+                # Emit tool-specific status
+                _tool_labels = {
+                    "image_search": "Searching for images",
+                    "youtubeMetadata": "Looking up YouTube videos",
+                    "transcribe_audio": "Transcribing audio",
+                    "get_local_time": "Getting local time",
+                    "create_image": "Generating image",
+                }
+                _tool_label = _tool_labels.get(function_name)
+                if _tool_label and event_id:
+                    yield format_sse("INFO", f"<TASK>{_tool_label}</TASK>")
+                    status_tracker.touch()
 
                 tool_result_gen = optimized_tool_execution(function_name, function_args, memoized_results, emit_event)
                 if hasattr(tool_result_gen, '__aiter__'):
@@ -513,6 +530,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                             collected_similar_images.extend(image_urls)
                         else:
                             collected_images_from_web.extend(image_urls)
+                        if event_id:
+                            yield format_sse("INFO", f"<TASK>Found {len(image_urls)} images</TASK>")
+                            status_tracker.touch()
                 else:
                     tool_result = await tool_result_gen if asyncio.iscoroutine(tool_result_gen) else tool_result_gen
 
@@ -534,6 +554,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 if _stale_event:
                     yield _stale_event
                 logger.info(f"[Pipeline] Fetching {len(fetch_calls)} sources in parallel")
+                if event_id:
+                    yield format_sse("INFO", f"<TASK>Reading {len(fetch_calls)} source{'s' if len(fetch_calls) != 1 else ''} for information</TASK>")
+                    status_tracker.touch()
 
                 async def execute_fetch(idx, tool_call):
                     function_name = tool_call["function"]["name"]
@@ -601,16 +624,29 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
 
                 if ingest_tasks:
                     try:
-                        await asyncio.wait_for(
+                        ingest_results = await asyncio.wait_for(
                             asyncio.gather(*ingest_tasks, return_exceptions=True),
                             timeout=5.0
                         )
+                        _ingested_count = sum(1 for r in ingest_results if not isinstance(r, Exception))
+                        if event_id and _ingested_count > 0:
+                            yield format_sse("INFO", f"<TASK>Indexed {_ingested_count} source{'s' if _ingested_count != 1 else ''} into knowledge base</TASK>")
+                            status_tracker.touch()
                     except asyncio.TimeoutError:
                         logger.warning("[INGESTION] Timeout reached, continuing anyway")
 
                 good_fetches, total_fetches = _evaluate_fetch_quality(tool_outputs)
                 if total_fetches > 0:
                     logger.info(f"[FETCH QUALITY] {good_fetches}/{total_fetches} fetches returned usable content")
+                    if event_id and good_fetches > 0:
+                        # Count sentences extracted from fetched content
+                        _fetched_content_len = sum(
+                            len(o.get("content", ""))
+                            for o in tool_outputs if o.get("name") == "fetch_full_text" and len(o.get("content", "")) >= FETCH_MIN_USEFUL_CHARS
+                        )
+                        _approx_sentences = max(1, _fetched_content_len // 80)
+                        yield format_sse("INFO", f"<TASK>Extracted ~{_approx_sentences} sentences from {good_fetches} source{'s' if good_fetches != 1 else ''}</TASK>")
+                        status_tracker.touch()
 
             messages.extend(tool_outputs)
             logger.info(f"Completed iteration {current_iteration}. Messages: {len(messages)}, Total tools: {tool_call_count}")
