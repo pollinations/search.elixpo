@@ -1314,8 +1314,12 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 }
             
             if web_search_calls:
-                search_count = len(web_search_calls)
-                emit_sse = emit_event("INFO", f"<TASK>Running {search_count} web search{'es' if search_count > 1 else ''}</TASK>")
+                try:
+                    first_query = json.loads(web_search_calls[0]["function"]["arguments"]).get("query", "")
+                    search_label = f"Searching for: {first_query[:80]}"
+                except Exception:
+                    search_label = "Searching the web"
+                emit_sse = emit_event("INFO", f"<TASK>{search_label}</TASK>")
                 if emit_sse:
                     yield emit_sse
                 status_tracker.touch()
