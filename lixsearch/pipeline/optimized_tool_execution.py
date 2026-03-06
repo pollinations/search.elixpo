@@ -104,7 +104,9 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
             history_event = emit_event_func("INFO", "<TASK>Reviewing conversation history</TASK>")
             if history_event:
                 yield history_event
-            session_id = function_args.get("session_id")
+            # Always use the pipeline's real session_id — never trust the model's argument
+            session_id = memoized_results.get("session_id") or function_args.get("session_id")
+            logger.info(f"[Pipeline] Using session_id={session_id} (pipeline override)")
             include_metadata = function_args.get("include_metadata", True)
             use_full_history = function_args.get("use_full_history", False)
             query_for_search = function_args.get("query", "")

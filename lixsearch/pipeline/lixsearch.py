@@ -298,6 +298,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         ]
 
         # Inject recent conversation history so the model has full multi-turn context
+        _injected_history = 0
         if session_id and session_context:
             try:
                 _prev = session_context.get_context()
@@ -306,15 +307,14 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     _prev = _prev[:-1]
                 if len(_prev) > 16:
                     _prev = _prev[-16:]
-                _injected = 0
                 for msg in _prev:
                     _role = msg.get("role", "user")
                     _content = msg.get("content", "")
                     if _role in ("user", "assistant") and _content:
                         messages.append({"role": _role, "content": _content[:1500]})
-                        _injected += 1
-                if _injected:
-                    logger.info(f"[Pipeline] Injected {_injected} conversation history messages into context")
+                        _injected_history += 1
+                if _injected_history:
+                    logger.info(f"[Pipeline] Injected {_injected_history} conversation history messages into context")
             except Exception as e:
                 logger.warning(f"[Pipeline] Failed to inject conversation history: {e}")
 
@@ -323,6 +323,17 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             "content": user_msg_content
         })
         force_synthesis = False
+
+        # Detect conversation-about-itself queries: summaries, recaps, "what did we discuss"
+        _query_lower = user_query.lower()
+        _is_meta_query = _injected_history >= 2 and any(kw in _query_lower for kw in [
+            "summarize", "summary", "recap", "what did we", "what have we",
+            "conversation so far", "previous conversation", "our conversation",
+            "what we discussed", "what we talked", "chat history",
+        ])
+        if _is_meta_query:
+            logger.info(f"[Pipeline] Meta-query detected with {_injected_history} history messages — skipping tools, answering from context")
+            force_synthesis = True  # This prevents tools from being offered
 
         while current_iteration < max_iterations:
             current_iteration += 1
