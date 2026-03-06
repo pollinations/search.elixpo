@@ -57,9 +57,9 @@ async def search(pipeline_initialized: bool):
             logger.warning(f"[search] Missing mandatory 'session_id' parameter")
             return jsonify({"error": "Missing mandatory parameter: session_id"}), 400
         
-        if not validate_query(query):
-            logger.warning(f"[{session_id}] Invalid query: {query[:50]}")
-            return jsonify({"error": "Invalid or missing query"}), 400
+        if not validate_query(query) and not image_url:
+            logger.warning(f"[{session_id}] Invalid query and no image: {query[:50]}")
+            return jsonify({"error": "Invalid or missing query (provide query or image)"}), 400
 
         if image_url and not validate_url(image_url):
             logger.warning(f"[{session_id}] Invalid image_url: {image_url}")

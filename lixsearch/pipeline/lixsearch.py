@@ -23,7 +23,7 @@ from pipeline.instruction import (
 from pipeline.optimized_tool_execution import optimized_tool_execution
 from pipeline.utils import format_sse, get_model_server
 from pipeline.sse_messages import get_status_message, SSEStatusTracker
-from functionCalls.getImagePrompt import generate_prompt_from_image
+from functionCalls.getImagePrompt import generate_prompt_from_image, describe_image, replyFromImage
 import asyncio
 load_dotenv()
 
@@ -1024,27 +1024,50 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             logger.info(f"[Pipeline] Loaded persistent Redis cache for session {session_id}")
         
         image_context_provided = False
+        image_analysis_result = None
         if image_only_mode:
-            logger.info(f"[Pipeline] Image-only query detected. Generating search query from image...")
+            logger.info(f"[Pipeline] Image-only mode: describing image directly via vision model")
             try:
-                image_event = emit_event("INFO", get_user_message("image_analysis"))
+                image_event = emit_event("INFO", "<TASK>Analyzing image</TASK>")
                 if image_event:
                     yield image_event
-                
-                generated_query = await generate_prompt_from_image(user_image)
-                user_query = generated_query
-                image_context_provided = True
-                logger.info(f"[Pipeline] Generated query from image: '{user_query}'")
-                
-                query_event = emit_event("INFO", get_user_message("analyzing"))
-                if query_event:
-                    yield query_event
+
+                image_description = await describe_image(user_image)
+                logger.info(f"[Pipeline] Image description generated: {len(image_description)} chars")
+
+                # Yield description directly as RESPONSE and return
+                if event_id:
+                    chunk_size = 80
+                    for i in range(0, len(image_description), chunk_size):
+                        chunk = image_description[i:i+chunk_size]
+                        yield format_sse("RESPONSE", chunk)
+                    yield format_sse("INFO", "<TASK>DONE</TASK>")
+                else:
+                    yield image_description
+
+                # Save to session context
+                memoized_results["final_response"] = image_description
+                if session_id and semantic_cache is not None:
+                    semantic_cache.save_for_request(session_id)
+                return
             except Exception as e:
-                logger.warning(f"[Pipeline] Failed to generate query from image, continuing with empty query: {e}")
+                logger.warning(f"[Pipeline] Failed to describe image: {e}")
+                # Fall through to normal pipeline with empty query
+                user_query = "describe this image"
                 image_context_provided = False
         elif user_image and user_query.strip():
-            logger.info(f"[Pipeline] Image + Query mode: Will analyze image in context of query")
-            image_context_provided = True
+            logger.info(f"[Pipeline] Image + Query mode: analyzing image in context of query")
+            try:
+                image_event = emit_event("INFO", "<TASK>Analyzing image</TASK>")
+                if image_event:
+                    yield image_event
+
+                image_analysis_result = await replyFromImage(user_image, user_query)
+                image_context_provided = True
+                logger.info(f"[Pipeline] Image analysis done: {len(image_analysis_result)} chars")
+            except Exception as e:
+                logger.warning(f"[Pipeline] Failed to analyze image: {e}")
+                image_context_provided = False
         
         max_iterations = 2
         current_iteration = 0
@@ -1085,6 +1108,11 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         
         logger.info(f"[Pipeline] RAG context prepared: {len(rag_context)} chars")
         
+        # Build user message — include image analysis if vision model already processed it
+        user_msg_content = user_instruction(user_query, user_image if not image_analysis_result else None, is_detailed=is_detailed_mode)
+        if image_analysis_result:
+            user_msg_content += f"\n\n[Image Analysis]\n{image_analysis_result}"
+
         messages = [
             {
                 "role": "system",
@@ -1093,7 +1121,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             },
             {
                 "role": "user",
-                "content": user_instruction(user_query, user_image, is_detailed=is_detailed_mode)
+                "content": user_msg_content
             }
         ]
         force_synthesis = False
