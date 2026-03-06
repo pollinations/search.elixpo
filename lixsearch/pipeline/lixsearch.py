@@ -295,16 +295,35 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 "name": "elixposearch-agent-system",
                 "content": system_instruction(rag_context, current_utc_time, is_detailed=is_detailed_mode)
             },
-            {
-                "role": "user",
-                "content": user_msg_content
-            }
         ]
+
+        # Inject recent conversation history so the model has full multi-turn context
+        if session_id and session_context:
+            try:
+                _prev = session_context.get_context()
+                # Drop the last item if it's the current query we just added
+                if _prev and _prev[-1].get("role") == "user" and _prev[-1].get("content") == user_query:
+                    _prev = _prev[:-1]
+                if len(_prev) > 16:
+                    _prev = _prev[-16:]
+                _injected = 0
+                for msg in _prev:
+                    _role = msg.get("role", "user")
+                    _content = msg.get("content", "")
+                    if _role in ("user", "assistant") and _content:
+                        messages.append({"role": _role, "content": _content[:1500]})
+                        _injected += 1
+                if _injected:
+                    logger.info(f"[Pipeline] Injected {_injected} conversation history messages into context")
+            except Exception as e:
+                logger.warning(f"[Pipeline] Failed to inject conversation history: {e}")
+
+        messages.append({
+            "role": "user",
+            "content": user_msg_content
+        })
         force_synthesis = False
 
-        # ==============================
-        # TOOL ITERATION LOOP
-        # ==============================
         while current_iteration < max_iterations:
             current_iteration += 1
             for m in messages:
@@ -315,8 +334,15 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         else:
                             m["content"] = "Processing your request..."
 
-            if len(messages) > 8:
-                trimmed = messages[:2] + messages[-6:]
+            if len(messages) > 20:
+                # Keep system prompt (1st), last 8 conversation history msgs, and last 6 tool interaction msgs
+                _system = [messages[0]]
+                # Find where tool interactions start (after the last user query)
+                _tool_msgs = messages[-6:]
+                _history_msgs = messages[1:-6]
+                if len(_history_msgs) > 8:
+                    _history_msgs = _history_msgs[-8:]
+                trimmed = _system + _history_msgs + _tool_msgs
                 logger.info(f"[OPTIMIZATION] Trimmed messages from {len(messages)} to {len(trimmed)}")
                 messages = trimmed
 
@@ -706,8 +732,13 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 logger.info(f"[SYNTHESIS] Decomposed into {len(subtopics)} sub-topics: {subtopics}")
 
                 original_msg_count = len(messages)
-                if len(messages) > 6:
-                    messages = messages[:2] + messages[-4:]
+                if len(messages) > 14:
+                    _sys = [messages[0]]
+                    _tool_tail = messages[-6:]
+                    _mid = messages[1:-6]
+                    if len(_mid) > 6:
+                        _mid = _mid[-6:]
+                    messages = _sys + _mid + _tool_tail
                     logger.info(f"[SYNTHESIS] Trimmed messages from {original_msg_count} to {len(messages)}")
 
                 all_subtopic_responses = []
@@ -793,8 +824,14 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             }
 
             original_msg_count = len(messages)
-            if len(messages) > 6:
-                messages = messages[:2] + messages[-4:]
+            if len(messages) > 14:
+                # Keep system prompt, some conversation history, and the last 6 tool interaction messages
+                _sys = [messages[0]]
+                _tool_tail = messages[-6:]
+                _mid = messages[1:-6]
+                if len(_mid) > 6:
+                    _mid = _mid[-6:]
+                messages = _sys + _mid + _tool_tail
                 logger.info(f"[SYNTHESIS] Trimmed messages from {original_msg_count} to {len(messages)}")
             else:
                 logger.info(f"[SYNTHESIS] Messages count: {len(messages)} (no trim needed)")
