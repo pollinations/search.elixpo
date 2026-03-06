@@ -62,7 +62,7 @@ LEAKED_TOOL_RE = re.compile(
     re.IGNORECASE,
 )
 
-LLM_MODEL = "kimi"
+LLM_MODEL = "gemini-fast"
 IMAGE_MODEL = "zimage"
 VISION_MODEL = "gemini-fast"
 RESPONSE_MODEL = "lixsearch"
