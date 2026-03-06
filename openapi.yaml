@@ -1,0 +1,563 @@
+openapi: 3.0.0
+info:
+  title: lixSearch API
+  description: Intelligent multi-service search assistant with web search, video/image fetching, and answer synthesis
+  version: 1.0.0
+  contact:
+    name: lixSearch Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:9002
+    description: Local development server
+  - url: http://localhost
+    description: Production (via nginx)
+
+paths:
+  /api/health:
+    get:
+      summary: Health check endpoint
+      tags:
+        - System
+      description: Returns the health status of the service and initialization state
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+                  initialized:
+                    type: boolean
+
+  /api/search:
+    get:
+      summary: Search (GET)
+      tags:
+        - Search
+      description: Perform a search with query and session
+      parameters:
+        - name: session_id
+          in: query
+          schema:
+            type: string
+          description: Session identifier for context persistence
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query
+        - name: image_url
+          in: query
+          schema:
+            type: string
+            format: uri
+          description: URL of image for reverse image search
+        - name: stream
+          in: query
+          schema:
+            type: string
+            enum: [true, false]
+            default: 'true'
+          description: Enable server-sent events streaming
+        - name: deep_search
+          in: query
+          schema:
+            type: string
+            enum: [true, false]
+            default: 'false'
+          description: Enable deep search for more comprehensive results
+      responses:
+        '200':
+          description: Search results (streamed or JSON)
+          content:
+            text/event-stream:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  object:
+                    type: string
+                  model:
+                    type: string
+                  choices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                        delta:
+                          type: object
+                          properties:
+                            role:
+                              type: string
+                            content:
+                              type: string
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '503':
+          description: Server not initialized
+
+    post:
+      summary: Search (POST)
+      tags:
+        - Search
+      description: Perform a search with query and session (POST variant)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: Search query
+                session_id:
+                  type: string
+                  description: Session identifier
+                image_url:
+                  type: string
+                  format: uri
+                  description: URL for image search
+                image:
+                  type: string
+                  format: uri
+                  description: Alternative parameter name for image_url
+                stream:
+                  type: boolean
+                  default: true
+                  description: Enable streaming
+                deep_search:
+                  type: boolean
+                  default: false
+                  description: Enable deep search
+      responses:
+        '200':
+          description: Search results
+        '400':
+          description: Invalid request
+        '503':
+          description: Server not initialized
+
+  /api/session/create:
+    post:
+      summary: Create new session
+      tags:
+        - Sessions
+      description: Create a new conversation session
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                initial_message:
+                  type: string
+                  description: Optional initial message
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+
+  /api/session/{session_id}:
+    get:
+      summary: Get session info
+      tags:
+        - Sessions
+      description: Retrieve session metadata and status
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  message_count:
+                    type: integer
+                  last_activity:
+                    type: string
+                    format: date-time
+        '404':
+          description: Session not found
+
+    delete:
+      summary: Delete session
+      tags:
+        - Sessions
+      description: Delete a session and its associated data
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session deleted
+        '404':
+          description: Session not found
+
+  /api/session/{session_id}/kg:
+    get:
+      summary: Get session knowledge graph
+      tags:
+        - Sessions
+      description: Retrieve the knowledge graph for a session
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Knowledge graph
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Session not found
+
+  /api/session/{session_id}/query:
+    post:
+      summary: Query session knowledge graph
+      tags:
+        - Sessions
+      description: Query the knowledge graph with a SPARQL-like query
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                  description: Query string
+      responses:
+        '200':
+          description: Query results
+
+  /api/session/{session_id}/entity/{entity}:
+    get:
+      summary: Get entity evidence
+      tags:
+        - Sessions
+      description: Get evidence and sources for a specific entity
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: entity
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Entity evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entity:
+                    type: string
+                  evidence:
+                    type: array
+                    items:
+                      type: object
+        '404':
+          description: Entity or session not found
+
+  /api/session/{session_id}/summary:
+    get:
+      summary: Get session summary
+      tags:
+        - Sessions
+      description: Get a summary of the session conversation
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                  key_topics:
+                    type: array
+                    items:
+                      type: string
+        '404':
+          description: Session not found
+
+  /api/chat:
+    post:
+      summary: Chat endpoint
+      tags:
+        - Chat
+      description: Send a message for chat with optional web search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                message:
+                  type: string
+                  description: User message
+                session_id:
+                  type: string
+                  description: Session identifier (creates new if omitted)
+                search:
+                  type: boolean
+                  default: true
+                  description: Enable web search augmentation
+                image_url:
+                  type: string
+                  format: uri
+                  description: Optional image URL for multimodal queries
+      responses:
+        '200':
+          description: Chat response (streamed)
+          content:
+            text/event-stream:
+              schema:
+                type: object
+        '400':
+          description: Invalid request
+        '503':
+          description: Server not initialized
+
+  /api/session/{session_id}/chat:
+    post:
+      summary: Session chat endpoint
+      tags:
+        - Chat
+      description: Send a message in an existing session
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                message:
+                  type: string
+                search:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Chat response (streamed)
+        '404':
+          description: Session not found
+
+  /api/session/{session_id}/chat/completions:
+    post:
+      summary: Chat completions endpoint
+      tags:
+        - Chat
+      description: OpenAI-compatible chat completions endpoint
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum: [system, user, assistant]
+                      content:
+                        type: string
+                model:
+                  type: string
+                temperature:
+                  type: number
+                  minimum: 0
+                  maximum: 2
+      responses:
+        '200':
+          description: Chat completion response
+
+  /api/session/{session_id}/history:
+    get:
+      summary: Get chat history
+      tags:
+        - Chat
+      description: Retrieve conversation history for a session
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Maximum number of messages
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Offset for pagination
+      responses:
+        '200':
+          description: Chat history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        role:
+                          type: string
+                        content:
+                          type: string
+                        timestamp:
+                          type: string
+                          format: date-time
+        '404':
+          description: Session not found
+
+  /api/stats:
+    get:
+      summary: Get performance statistics
+      tags:
+        - System
+      description: Retrieve system-wide statistics and metrics
+      responses:
+        '200':
+          description: Statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests_total:
+                    type: integer
+                  sessions_active:
+                    type: integer
+                  avg_response_time:
+                    type: number
+                  uptime_seconds:
+                    type: integer
+
+  /ws/search:
+    get:
+      summary: WebSocket search endpoint
+      tags:
+        - Search
+      description: WebSocket connection for real-time search streaming
+      parameters:
+        - name: session_id
+          in: query
+          schema:
+            type: string
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '101':
+          description: WebSocket connection established
+
+tags:
+  - name: System
+    description: System health and statistics
+  - name: Search
+    description: Search operations
+  - name: Sessions
+    description: Session management
+  - name: Chat
+    description: Chat and conversation endpoints

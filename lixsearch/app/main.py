@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from quart import Quart, request, jsonify
+from quart import Quart, request, jsonify, send_file, render_template_string
 from quart_cors import cors
 from sessions.main import get_session_manager
 from ragService.main import get_retrieval_system
@@ -83,6 +83,38 @@ class lixSearch:
         async def chat_completions_wrapper(session_id):
             return await chat.chat_completions(session_id, self.pipeline_initialized)
         
+        async def scalar_ui():
+            html = '''
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>lixSearch API Documentation</title>
+                <meta charset="utf-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1" />
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@scalar/themes@latest/style.css" />
+                <style>
+                    * {
+                        margin: 0;
+                        padding: 0;
+                    }
+                    html {
+                        font-family: system-ui, -apple-system, sans-serif;
+                        background-color: #fafafa;
+                    }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                    }
+                </style>
+            </head>
+            <body>
+                <script id="api-reference" data-url="/openapi.json"></script>
+                <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@latest/latest.js"></script>
+            </body>
+            </html>
+            '''
+            return html, 200, {"Content-Type": "text/html"}
+        
         self.app.route('/api/health', methods=['GET'])(health_check_wrapper)
         self.app.route('/api/search', methods=['POST', 'GET'])(search_wrapper)
         self.app.route('/api/session/create', methods=['POST'])(session.create_session)
@@ -100,6 +132,35 @@ class lixSearch:
         self.app.route('/api/session/<session_id>/history', methods=['GET'])(chat.get_chat_history)
         self.app.route('/api/stats', methods=['GET'])(stats.get_stats)
         self.app.websocket('/ws/search')(websocket.websocket_search)
+        
+        # Scalar API documentation UI
+        self.app.route('/docs', methods=['GET'])(scalar_ui)
+        self.app.route('/api/docs', methods=['GET'])(scalar_ui)
+        
+        # OpenAPI spec endpoints
+        _openapi_spec_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'openapi.yaml')
+
+        async def openapi_spec_json():
+            import yaml
+            try:
+                with open(_openapi_spec_path, 'r') as f:
+                    spec = yaml.safe_load(f)
+                return jsonify(spec)
+            except Exception as e:
+                logger.error(f"[APP] Failed to load OpenAPI spec: {e}")
+                return jsonify({"error": "OpenAPI spec not found"}), 404
+
+        async def openapi_spec_yaml():
+            try:
+                with open(_openapi_spec_path, 'r') as f:
+                    content = f.read()
+                return content, 200, {"Content-Type": "text/yaml; charset=utf-8"}
+            except Exception as e:
+                logger.error(f"[APP] Failed to load OpenAPI spec: {e}")
+                return "OpenAPI spec not found", 404
+
+        self.app.route('/openapi.json', methods=['GET'])(openapi_spec_json)
+        self.app.route('/openapi.yaml', methods=['GET'])(openapi_spec_yaml)
 
         async def surf_wrapper():
             return await surf.surf(self.pipeline_initialized)
