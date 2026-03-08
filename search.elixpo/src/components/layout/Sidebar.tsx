@@ -16,6 +16,7 @@ interface RecentSession {
   id: string;
   title: string | null;
   updatedAt: string;
+  expired?: boolean;
 }
 
 const moreItems = [
@@ -37,12 +38,14 @@ export default function Sidebar({ onNewSearch }: SidebarProps) {
   const isActive = (path: string) =>
     path === '/' ? pathname === '/' : pathname.startsWith(path);
 
-  // Fetch recent searches
+  // Fetch recent searches — no hard limit, let the server decide
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const clientId = window.localStorage.getItem('elixpo_client_id') || '';
     if (!clientId) return;
-    fetch(`/api/conversations?clientId=${encodeURIComponent(clientId)}&limit=8`)
+    fetch(`/api/conversations?clientId=${encodeURIComponent(clientId)}`, {
+      headers: { 'x-xid': process.env.NEXT_PUBLIC_XID || '' },
+    })
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setRecents(data);
@@ -121,15 +124,19 @@ export default function Sidebar({ onNewSearch }: SidebarProps) {
             recents.map((s) => (
               <button
                 key={s.id}
-                onClick={() => router.push(`/c/${s.id}`)}
+                onClick={() => !s.expired && router.push(`/c/${s.id}`)}
+                title={s.expired ? 'This chat has expired' : undefined}
                 className={`
                   w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm transition-colors text-left
-                  ${pathname === `/c/${s.id}`
-                    ? 'text-white bg-[#2a2b2d]'
-                    : 'text-[#999] hover:text-white hover:bg-[#222]'}
+                  ${s.expired
+                    ? 'text-[#444] line-through cursor-default'
+                    : pathname === `/c/${s.id}`
+                      ? 'text-white bg-[#2a2b2d]'
+                      : 'text-[#999] hover:text-white hover:bg-[#222]'}
                 `}
               >
                 <span className="truncate flex-1">{s.title || 'Untitled'}</span>
+                {s.expired && <span className="text-[10px] text-[#555] shrink-0">expired</span>}
               </button>
             ))
           ) : (

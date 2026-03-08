@@ -17,6 +17,7 @@ export default function HomeContent({ initialSessionId }: HomeContentProps) {
   const { sessionId, newSession } = useSession(initialSessionId);
   const { messages, isSearching, statusText, sendQuery, clearMessages, setMessages } = useSSESearch();
   const loadedRef = useRef<string | null>(null);
+  const [expired, setExpired] = useState(false);
   const [incognito, setIncognito] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.localStorage.getItem('elixpo_incognito') === '1';
@@ -36,12 +37,17 @@ export default function HomeContent({ initialSessionId }: HomeContentProps) {
       return;
     }
 
-    // Fall back to Postgres
+    // Fall back to D1
     fetch(`/api/conversations/${sessionId}`, {
       headers: { 'x-xid': process.env.NEXT_PUBLIC_XID || '' },
     })
       .then((res) => res.json())
       .then((data) => {
+        if (data.expired) {
+          setExpired(true);
+          return;
+        }
+        setExpired(false);
         if (data.messages && data.messages.length > 0) {
           setMessages(data.messages);
         }
@@ -83,11 +89,12 @@ export default function HomeContent({ initialSessionId }: HomeContentProps) {
 
   const handleNewSearch = useCallback(() => {
     loadedRef.current = null;
+    setExpired(false);
     newSession();
     clearMessages();
   }, [newSession, clearMessages]);
 
-  const isLanding = messages.length === 0;
+  const isLanding = messages.length === 0 && !expired;
 
   return (
     <div className="h-screen flex bg-[#18191a]">
@@ -110,7 +117,22 @@ export default function HomeContent({ initialSessionId }: HomeContentProps) {
           </button>
         </div>
 
-        {isLanding ? (
+        {expired ? (
+          /* Expired guest session */
+          <div className="flex-1 flex flex-col items-center justify-center px-4 -mt-10 text-center">
+            <div className="text-[#444] text-4xl mb-4">&#128337;</div>
+            <h2 className="text-xl font-medium text-[#888] mb-2">Chat expired</h2>
+            <p className="text-sm text-[#555] mb-6 max-w-sm">
+              Guest conversations expire after 24 hours. Sign in to keep your chats permanently.
+            </p>
+            <button
+              onClick={handleNewSearch}
+              className="px-5 py-2.5 rounded-xl bg-[#444ce7] text-white text-sm font-medium hover:bg-[#3b43d0] transition-colors"
+            >
+              Start a new search
+            </button>
+          </div>
+        ) : isLanding ? (
           /* Landing: centered branding + search */
           <div className="flex-1 flex flex-col items-center justify-center px-4 -mt-10">
             <h1 className="text-5xl font-display font-bold text-gradient-hero mb-10 select-none">

@@ -64,10 +64,15 @@ export async function getSessionWithMessages(sessionId: string) {
   const cached = await KV.get(`session:${sessionId}`, 'json');
   if (cached) return cached as { title: string | null; messages: Array<Record<string, unknown>> };
 
-  const session = await DB.prepare('SELECT id, title FROM Session WHERE id = ?')
-    .bind(sessionId).first<{ id: string; title: string | null }>();
+  const session = await DB.prepare('SELECT id, title, isGuest, expiresAt FROM Session WHERE id = ?')
+    .bind(sessionId).first<{ id: string; title: string | null; isGuest: number; expiresAt: string | null }>();
 
   if (!session) return null;
+
+  // Check if guest session has expired
+  if (session.isGuest === 1 && session.expiresAt && session.expiresAt < new Date().toISOString()) {
+    return { title: session.title, messages: [], expired: true };
+  }
 
   const { results: messages } = await DB.prepare(
     'SELECT id, role, content, sources, images FROM Message WHERE sessionId = ? ORDER BY createdAt ASC'
@@ -90,16 +95,35 @@ export async function getSessionWithMessages(sessionId: string) {
   return data;
 }
 
-export async function listSessions(clientId: string, limit: number = 20) {
-  const { DB } = getBindings();
+export async function listSessions(clientId: string, limit: number = 30, userId?: string | null) {
+  const { DB, KV } = getBindings();
 
-  const { results } = await DB.prepare(
-    `SELECT s.id, s.title, s.createdAt, s.updatedAt,
-            (SELECT COUNT(*) FROM Message m WHERE m.sessionId = s.id) as messageCount
-     FROM Session s WHERE s.clientId = ? ORDER BY s.updatedAt DESC LIMIT ?`
-  ).bind(clientId, limit).all();
+  // Try KV cache first
+  const cacheKey = userId ? `recents:u:${userId}` : `recents:c:${clientId}`;
+  const cached = await KV.get(cacheKey, 'json');
+  if (cached) return cached as Array<Record<string, unknown>>;
 
-  return results;
+  // For logged-in users fetch by userId; for guests fetch by clientId
+  const sql = userId
+    ? `SELECT s.id, s.title, s.createdAt, s.updatedAt, s.isGuest, s.expiresAt,
+              (SELECT COUNT(*) FROM Message m WHERE m.sessionId = s.id) as messageCount
+       FROM Session s WHERE s.userId = ? ORDER BY s.updatedAt DESC LIMIT ?`
+    : `SELECT s.id, s.title, s.createdAt, s.updatedAt, s.isGuest, s.expiresAt,
+              (SELECT COUNT(*) FROM Message m WHERE m.sessionId = s.id) as messageCount
+       FROM Session s WHERE s.clientId = ? ORDER BY s.updatedAt DESC LIMIT ?`;
+
+  const { results } = await DB.prepare(sql).bind(userId || clientId, limit).all();
+
+  const now = new Date().toISOString();
+  const enriched = results.map((s: Record<string, unknown>) => ({
+    ...s,
+    expired: s.isGuest === 1 && s.expiresAt != null && (s.expiresAt as string) < now,
+  }));
+
+  // Cache for 2 minutes
+  await KV.put(cacheKey, JSON.stringify(enriched), { expirationTtl: 120 });
+
+  return enriched;
 }
 
 // ── Message ──────────────────────────────────────────────────────────────────
@@ -124,7 +148,7 @@ export async function createMessage(
     now
   ).run();
 
-  // Invalidate KV cache for this session (new message = stale cache)
+  // Invalidate KV caches (session messages + sidebar recents)
   await KV.delete(`session:${sessionId}`);
 
   return { id, sessionId, role, content };

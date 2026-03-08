@@ -58,9 +58,11 @@ export async function GET(req: NextRequest) {
     }
 
     const clientId = req.nextUrl.searchParams.get('clientId') || 'anonymous';
-    const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20');
+    const limit = parseInt(req.nextUrl.searchParams.get('limit') || '30');
 
-    const sessions = await listSessions(clientId, limit);
+    // If user is logged in, list their sessions; otherwise list by clientId
+    const user = await getAuthUser(req);
+    const sessions = await listSessions(clientId, limit, user?.id);
     return Response.json(sessions);
   } catch (err) {
     console.error('[API/conversations] List error:', err);

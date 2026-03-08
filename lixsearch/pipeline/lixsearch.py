@@ -121,8 +121,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
     active_min_links = MIN_LINKS_TO_TAKE_DETAILED if is_detailed_mode else MIN_LINKS_TO_TAKE
     active_max_links = MAX_LINKS_TO_TAKE_DETAILED if is_detailed_mode else MAX_LINKS_TO_TAKE
     active_max_tokens = LLM_MAX_TOKENS_DETAILED if is_detailed_mode else LLM_MAX_TOKENS
+    active_max_sources = MAX_SOURCES_DETAILED if is_detailed_mode else MAX_SOURCES_STANDARD
+    active_sources_per_search = SOURCES_PER_SEARCH
     if is_detailed_mode:
-        logger.info(f"[Pipeline] Detailed mode ON: links={active_min_links}-{active_max_links}, max_tokens={active_max_tokens}")
+        logger.info(f"[Pipeline] Detailed mode ON: links={active_min_links}-{active_max_links}, max_tokens={active_max_tokens}, max_sources={active_max_sources}")
 
     initial_event = emit_event("INFO", get_user_message("processing"))
     if initial_event:
@@ -304,8 +306,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         rag_context = ""
         if core_service:
             try:
+                active_top_k = RETRIEVAL_TOP_K * 2 if is_detailed_mode else RETRIEVAL_TOP_K
                 retrieval_result = await asyncio.wait_for(
-                    asyncio.to_thread(core_service.retrieve, user_query, RETRIEVAL_TOP_K),
+                    asyncio.to_thread(core_service.retrieve, user_query, active_top_k),
                     timeout=3.0
                 )
                 if retrieval_result.get("count", 0) > 0:
@@ -569,7 +572,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 for result in web_search_results:
                     if not isinstance(result, Exception):
                         if result["name"] == "web_search" and "current_search_urls" in memoized_results:
-                            collected_sources.extend(memoized_results["current_search_urls"][:3])
+                            collected_sources.extend(memoized_results["current_search_urls"][:active_sources_per_search])
                         tool_outputs.append({
                             "role": "tool",
                             "tool_call_id": result["tool_call_id"],
@@ -682,7 +685,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
 
                     url = fetch_result["url"]
 
-                    if len(collected_sources) < 5:
+                    if len(collected_sources) < active_max_sources:
                         collected_sources.append(url)
 
                     if core_service:
