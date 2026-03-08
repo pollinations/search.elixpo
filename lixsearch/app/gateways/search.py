@@ -43,6 +43,7 @@ async def search(pipeline_initialized: bool):
             session_id = request.args.get("session_id", "").strip()
             query = request.args.get("query", "").strip()
             image_url = request.args.get("image_url") or request.args.get("image")
+            images_param = request.args.getlist("images")
             stream_param = request.args.get("stream", "true").lower()
             deep_search_param = request.args.get("deep_search", "false").lower()
         else:
@@ -50,20 +51,34 @@ async def search(pipeline_initialized: bool):
             session_id = data.get("session_id", "").strip()
             query = data.get("query", "").strip()
             image_url = data.get("image_url") or data.get("image")
+            images_param = data.get("images", [])
             stream_param = str(data.get("stream", "true")).lower()
             deep_search_param = str(data.get("deep_search", "false")).lower()
+
+        # Normalize images: support both single `image` and `images` array (max 3)
+        image_urls = []
+        if images_param and isinstance(images_param, list):
+            image_urls = [u for u in images_param if isinstance(u, str) and u.strip()][:3]
+        if image_url and image_url not in image_urls:
+            image_urls.insert(0, image_url)
+        image_urls = image_urls[:3]
+
+        # For backward compat, set image_url to first image
+        if image_urls:
+            image_url = image_urls[0]
 
         if not session_id:
             logger.warning(f"[search] Missing mandatory 'session_id' parameter")
             return jsonify({"error": "Missing mandatory parameter: session_id"}), 400
-        
-        if not validate_query(query) and not image_url:
+
+        if not validate_query(query) and not image_urls:
             logger.warning(f"[{session_id}] Invalid query and no image: {query[:50]}")
             return jsonify({"error": "Invalid or missing query (provide query or image)"}), 400
 
-        if image_url and not validate_url(image_url):
-            logger.warning(f"[{session_id}] Invalid image_url: {image_url}")
-            return jsonify({"error": "Invalid image_url"}), 400
+        for img_url in image_urls:
+            if not validate_url(img_url):
+                logger.warning(f"[{session_id}] Invalid image_url: {img_url}")
+                return jsonify({"error": f"Invalid image_url: {img_url}"}), 400
 
         stream_mode = stream_param not in ("false", "0", "no")
         deep_search_mode = deep_search_param in ("true", "1", "yes")
@@ -72,7 +87,7 @@ async def search(pipeline_initialized: bool):
 
         logger.info(
             f"[{request_id}] search session={session_id} query={query[:LOG_MESSAGE_QUERY_TRUNCATE]}... "
-            f"stream={stream_mode} image={bool(image_url)} deep_search={deep_search_mode}"
+            f"stream={stream_mode} images={len(image_urls)} deep_search={deep_search_mode}"
         )
 
         if stream_mode:
@@ -80,23 +95,24 @@ async def search(pipeline_initialized: bool):
                 async for chunk in run_elixposearch_pipeline(
                     user_query=query,
                     user_image=image_url,
+                    user_images=image_urls,
                     event_id=request_id,
                     session_id=session_id,
                     deep_search=deep_search_mode,
                 ):
                     chunk_str = chunk if isinstance(chunk, str) else chunk.decode('utf-8')
-                    
+
                     try:
                         lines = chunk_str.strip().split('\n')
                         event_type = None
                         event_data_lines = []
-                        
+
                         for line in lines:
                             if line.startswith('event:'):
                                 event_type = line.replace('event:', '').strip()
                             elif line.startswith('data:'):
                                 event_data_lines.append(line.replace('data:', '', 1).lstrip())
-                        
+
                         event_data = "\n".join(event_data_lines) if event_data_lines else None
                         if event_type and event_data:
                             openai_sse = format_sse_event_openai(event_type, event_data, request_id)
@@ -121,6 +137,7 @@ async def search(pipeline_initialized: bool):
             async for chunk in run_elixposearch_pipeline(
                 user_query=query,
                 user_image=image_url,
+                user_images=image_urls,
                 event_id=None,
                 session_id=session_id,
                 deep_search=deep_search_mode,

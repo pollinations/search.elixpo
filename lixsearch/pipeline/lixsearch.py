@@ -39,10 +39,16 @@ MODEL = LLM_MODEL
 logger.debug(f"Model configured: {MODEL}")
 
 
-async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: str = None, session_id: str = None, deep_search: bool = False):
+async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: str = None, session_id: str = None, deep_search: bool = False, user_images: list = None):
+    # Normalize: user_images is the canonical list (max 3), user_image is first for backward compat
+    if user_images is None:
+        user_images = [user_image] if user_image else []
+    if not user_image and user_images:
+        user_image = user_images[0]
+
     logger.info(
         f"[pipeline] session={session_id} Starting ElixpoSearch: "
-        f"query='{user_query[:LOG_MESSAGE_QUERY_TRUNCATE]}...' image={bool(user_image)} "
+        f"query='{user_query[:LOG_MESSAGE_QUERY_TRUNCATE]}...' images={len(user_images)} "
         f"deep_search={deep_search}"
     )
 
