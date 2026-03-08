@@ -4,26 +4,27 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
 
 # D1 Database — persistent storage for sessions, messages, bookmarks, discover articles
-# Create with: wrangler d1 create elixpo-search-db
+# Create with: wrangler d1 create elixpo_search
 # Then paste the database_id below
 [[d1_databases]]
 binding = "DB"
-database_name = "elixpo-search-db"
-database_id = "" # fill after `wrangler d1 create elixpo-search-db`
+database_name = "elixpo_search"
+database_id = "" # fill after `wrangler d1 create elixpo_search`
+migrations_dir = "workers/migrations"
 
 # KV Namespace — read cache for session/conversation data
-# Create with: wrangler kv namespace create SESSIONS_KV
+# Create with: wrangler kv namespace create elixpo_search_sessions
 # Then paste the id below
 [[kv_namespaces]]
 binding = "SESSIONS_KV"
-id = "" # fill after `wrangler kv namespace create SESSIONS_KV`
+id = "" # fill after `wrangler kv namespace create elixpo_search_sessions`
 
 # KV Namespace — guest rate limiting (IP -> request count)
-# Create with: wrangler kv namespace create RATE_LIMIT_KV
+# Create with: wrangler kv namespace create elixpo_search_ratelimit
 # Then paste the id below
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id = "" # fill after `wrangler kv namespace create RATE_LIMIT_KV`
+id = "" # fill after `wrangler kv namespace create elixpo_search_ratelimit`
 
 [vars]
 BACKEND_URL = "https://search.elixpo.com:10001"

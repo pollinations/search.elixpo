@@ -11,8 +11,8 @@
     "pages:build": "npx @cloudflare/next-on-pages",
     "pages:dev": "npx wrangler pages dev .vercel/output/static --compatibility-date=2024-12-01 --compatibility-flags=nodejs_compat --d1=DB --kv=SESSIONS_KV --kv=RATE_LIMIT_KV",
     "pages:deploy": "npx wrangler pages deploy .vercel/output/static",
-    "db:migrate": "npx wrangler d1 migrations apply elixpo-search-db",
-    "db:migrate:local": "npx wrangler d1 migrations apply elixpo-search-db --local"
+    "db:migrate": "npx wrangler d1 migrations apply elixpo_search",
+    "db:migrate:local": "npx wrangler d1 migrations apply elixpo_search --local"
   },
   "dependencies": {
     "@cloudflare/next-on-pages": "^1.13.0",

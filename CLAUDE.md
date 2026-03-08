@@ -183,7 +183,7 @@ Browser → Cloudflare Pages (edge, Next.js API routes)
 - **Cloudflare D1** (SQLite) — persistent storage for sessions, messages, bookmarks, discover articles
 - **Cloudflare KV** (`SESSIONS_KV`) — read cache for session data (10min TTL, invalidated on write)
 - **Cloudflare KV** (`RATE_LIMIT_KV`) — guest IP rate limiting (24h TTL)
-- Schema: `migrations/0001_init/schema.sql`
+- Schema: `workers/migrations/0001_init/schema.sql`
 - Models: `Session`, `Message`, `Bookmark`, `DiscoverArticle`
 
 ### Frontend API routes
@@ -207,7 +207,7 @@ Browser → Cloudflare Pages (edge, Next.js API routes)
 | `src/hooks/useSession.ts` | Session/clientId management |
 | `src/app/api/search/route.ts` | Search proxy (SSE passthrough, rate-limited) |
 | `wrangler.toml` | Cloudflare Pages config (D1 + KV bindings) |
-| `migrations/0001_init/schema.sql` | D1 database schema |
+| `workers/migrations/0001_init/schema.sql` | D1 database schema |
 | `env.d.ts` | Cloudflare env type declarations |
 
 ### Deploy frontend
@@ -221,9 +221,9 @@ npm run db:migrate:local       # apply D1 migrations (local dev)
 
 ### Cloudflare setup (one-time)
 ```bash
-wrangler d1 create elixpo-search-db          # create D1 database
-wrangler kv namespace create SESSIONS_KV     # create KV for session cache
-wrangler kv namespace create RATE_LIMIT_KV   # create KV for rate limiting
+wrangler d1 create elixpo_search                    # create D1 database
+wrangler kv namespace create elixpo_search_sessions     # create KV for session cache
+wrangler kv namespace create elixpo_search_ratelimit    # create KV for rate limiting
 # paste the IDs into wrangler.toml
 wrangler secret put INTERNAL_API_KEY         # backend auth key
 wrangler secret put XID                      # anti-abuse token
