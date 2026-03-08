@@ -33,7 +33,7 @@ export function useSSESearch() {
   const sendQuery = useCallback(async (
     query: string,
     sessionId: string,
-    options?: { images?: string[]; deepSearch?: boolean }
+    options?: { images?: string[]; deepSearch?: boolean; incognito?: boolean }
   ) => {
     if ((!query.trim() && !(options?.images?.length)) || state.isSearching) return;
     sessionRef.current = sessionId;
@@ -65,6 +65,7 @@ export function useSSESearch() {
     abortRef.current = new AbortController();
 
     try {
+      const isIncognito = options?.incognito || false;
       const body: Record<string, unknown> = { query, session_id: sessionId, stream: true };
       if (options?.images?.length) body.images = options.images;
       if (options?.deepSearch) body.deep_search = true;
@@ -107,7 +108,7 @@ export function useSSESearch() {
               persistMessages(sessionId, updated.messages);
               return updated;
             });
-            saveToDB(sessionId, query, assistantMsg.id);
+            saveToDB(sessionId, query, assistantMsg.id, isIncognito);
             return;
           }
 
@@ -138,7 +139,7 @@ export function useSSESearch() {
                 persistMessages(sessionId, updated.messages);
                 return updated;
               });
-              saveToDB(sessionId, query, assistantMsg.id);
+              saveToDB(sessionId, query, assistantMsg.id, isIncognito);
               return;
             }
             setState((prev) => ({ ...prev, statusText: taskText }));
@@ -217,7 +218,7 @@ export function useSSESearch() {
         persistMessages(sessionId, updated.messages);
         return updated;
       });
-      saveToDB(sessionId, query, assistantMsg.id);
+      saveToDB(sessionId, query, assistantMsg.id, isIncognito);
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return;
       setState((prev) => ({
@@ -251,7 +252,7 @@ export function useSSESearch() {
     });
   };
 
-  const saveToDB = async (sessionId: string, query: string, assistantMsgId: string) => {
+  const saveToDB = async (sessionId: string, query: string, assistantMsgId: string, isIncognito?: boolean) => {
     try {
       setState((prev) => {
         const assistant = prev.messages.find((m) => m.id === assistantMsgId);
@@ -268,6 +269,7 @@ export function useSSESearch() {
               content: assistant.content,
               sources: assistant.sources,
               images: assistant.images,
+              incognito: isIncognito || false,
             }),
           })
             .then(() => markCachedAsSaved(sessionId))

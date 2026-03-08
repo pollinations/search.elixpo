@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { exchangeCodeForTokens, fetchUserFromSSO, setAuthCookies } from '@/lib/auth';
-import { upsertUser, claimGuestSessions } from '@/lib/db';
+import { upsertUser } from '@/lib/db';
 
 export const runtime = 'edge';
 

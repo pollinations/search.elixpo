@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { validateXID } from '@/lib/api';
 import { upsertSession, createMessage, listSessions } from '@/lib/db';
+import { getAuthUser } from '@/lib/auth';
 
 export const runtime = 'edge';
 
@@ -12,18 +13,27 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { sessionId, query, content, sources, images } = body;
+    const { sessionId, query, content, sources, images, incognito } = body;
 
     if (!sessionId || !content) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Upsert session
+    // Check if user is authenticated
+    const user = await getAuthUser(req);
+
+    // Upsert session with guest/incognito metadata
     const session = await upsertSession(
       sessionId,
       body.clientId || 'anonymous',
-      query?.slice(0, 100) || null
+      query?.slice(0, 100) || null,
+      { userId: user?.id, incognito: !!incognito }
     );
+
+    // In incognito mode, save only session metadata — skip message content
+    if (incognito) {
+      return Response.json({ id: null, sessionId: session.id, incognito: true });
+    }
 
     // Save user message
     if (query) {

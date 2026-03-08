@@ -35,6 +35,18 @@ export function useAuth() {
       if (res.ok) {
         const data = await res.json();
         setUser(data);
+
+        // Claim any guest sessions for this browser
+        const clientId = typeof window !== 'undefined'
+          ? window.localStorage.getItem('elixpo_client_id')
+          : null;
+        if (clientId) {
+          fetch('/api/sessions/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-xid': process.env.NEXT_PUBLIC_XID || '' },
+            body: JSON.stringify({ clientId }),
+          }).catch(() => {});
+        }
       } else {
         setUser(null);
       }
