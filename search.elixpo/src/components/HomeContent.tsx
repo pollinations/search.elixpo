@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { EyeOff, Eye } from 'lucide-react';
+import { GhostIcon, UserRound } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import SearchInput, { type SearchPayload } from '@/components/search/SearchInput';
 import SearchResults from '@/components/search/SearchResults';
@@ -58,9 +58,15 @@ export default function HomeContent({ initialSessionId }: HomeContentProps) {
     setIncognito((prev) => {
       const next = !prev;
       window.localStorage.setItem('elixpo_incognito', next ? '1' : '0');
+      // Switching to incognito starts a fresh session
+      if (next) {
+        loadedRef.current = null;
+        newSession();
+        clearMessages();
+      }
       return next;
     });
-  }, []);
+  }, [newSession, clearMessages]);
 
   const handleSend = useCallback(
     (payload: SearchPayload) => {
@@ -99,7 +105,7 @@ export default function HomeContent({ initialSessionId }: HomeContentProps) {
                 : 'text-[#666] hover:text-[#999] hover:bg-[#222]'
             }`}
           >
-            {incognito ? <EyeOff size={14} /> : <Eye size={14} />}
+            {incognito ? <GhostIcon size={14} /> : <UserRound size={14} />}
             {incognito ? 'Incognito' : ''}
           </button>
         </div>
