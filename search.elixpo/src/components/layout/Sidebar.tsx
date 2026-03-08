@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
-  Plus, Home, Globe, BookOpen, Clock, MoreHorizontal,
-  LogIn, LogOut, User, Bell, ChevronLeft,
+  Plus, Home, Globe, BookOpen, TrendingUp, MoreHorizontal,
+  LogIn, LogOut, User, Bell,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
@@ -18,13 +18,21 @@ interface RecentSession {
   updatedAt: string;
 }
 
+const moreItems = [
+  { label: 'Travel', icon: Globe, href: '/discover/travel' },
+  { label: 'Academic', icon: BookOpen, href: '/discover/academic' },
+  { label: 'Patents', icon: TrendingUp, href: '/discover/patents' },
+];
+
 export default function Sidebar({ onNewSearch }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading, login, logout } = useAuth();
   const [recents, setRecents] = useState<RecentSession[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
 
   const isActive = (path: string) =>
     path === '/' ? pathname === '/' : pathname.startsWith(path);
@@ -42,22 +50,15 @@ export default function Sidebar({ onNewSearch }: SidebarProps) {
       .catch(() => {});
   }, []);
 
-  // Close menu on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
     }
-    if (menuOpen) document.addEventListener('mousedown', handleClickOutside);
+    if (menuOpen || moreOpen) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [menuOpen]);
-
-  const navItems = [
-    { icon: Home, label: 'Home', href: '/' },
-    { icon: Globe, label: 'Discover', href: '/discover' },
-    { icon: BookOpen, label: 'Library', href: '/library' },
-  ];
+  }, [menuOpen, moreOpen]);
 
   return (
     <aside className="w-[240px] h-full bg-[#171717] flex flex-col shrink-0 border-r border-[#2a2b2d]">
@@ -74,21 +75,39 @@ export default function Sidebar({ onNewSearch }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="px-3 flex flex-col gap-0.5">
-        {navItems.map((item) => (
+        <NavItem icon={Home} label="Home" href="/" active={isActive('/')} onClick={() => router.push('/')} />
+        <NavItem icon={BookOpen} label="History" href="/library" active={isActive('/library')} onClick={() => router.push('/library')} />
+        <NavItem icon={Globe} label="Discover" href="/discover" active={isActive('/discover')} onClick={() => router.push('/discover')} />
+        <NavItem icon={TrendingUp} label="Finance" href="/discover/finance" active={isActive('/discover/finance')} onClick={() => router.push('/discover/finance')} />
+
+        {/* More with popover */}
+        <div className="relative" ref={moreRef}>
           <button
-            key={item.href}
-            onClick={() => router.push(item.href)}
+            onClick={() => setMoreOpen(!moreOpen)}
             className={`
               w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors
-              ${isActive(item.href)
-                ? 'text-white bg-[#2a2b2d]'
-                : 'text-[#999] hover:text-white hover:bg-[#222]'}
+              ${moreOpen ? 'text-white bg-[#2a2b2d]' : 'text-[#999] hover:text-white hover:bg-[#222]'}
             `}
           >
-            <item.icon size={18} />
-            <span>{item.label}</span>
+            <MoreHorizontal size={18} />
+            <span>More</span>
           </button>
-        ))}
+
+          {moreOpen && (
+            <div className="absolute left-full top-0 ml-1 w-44 bg-[#232425] border border-[#333] rounded-xl shadow-card-lg py-1.5 z-50">
+              {moreItems.map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => { setMoreOpen(false); router.push(item.href); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-[#ccc] hover:text-white hover:bg-[#2a2b2d] transition-colors"
+                >
+                  <item.icon size={15} />
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </nav>
 
       {/* Divider */}
@@ -104,7 +123,7 @@ export default function Sidebar({ onNewSearch }: SidebarProps) {
                 key={s.id}
                 onClick={() => router.push(`/c/${s.id}`)}
                 className={`
-                  w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm transition-colors text-left group
+                  w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm transition-colors text-left
                   ${pathname === `/c/${s.id}`
                     ? 'text-white bg-[#2a2b2d]'
                     : 'text-[#999] hover:text-white hover:bg-[#222]'}
@@ -127,7 +146,6 @@ export default function Sidebar({ onNewSearch }: SidebarProps) {
               onClick={() => setMenuOpen(!menuOpen)}
               className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-[#222] transition-colors"
             >
-              {/* Avatar */}
               <div className="w-8 h-8 rounded-full overflow-hidden shrink-0">
                 {user.avatar ? (
                   <img src={user.avatar} alt="" className="w-full h-full object-cover" />
@@ -140,6 +158,7 @@ export default function Sidebar({ onNewSearch }: SidebarProps) {
               <span className="text-sm text-[#ccc] truncate flex-1 text-left">
                 {user.displayName || user.email.split('@')[0]}
               </span>
+              <Bell size={15} className="text-[#666] shrink-0" />
             </button>
           ) : (
             <button
@@ -152,12 +171,23 @@ export default function Sidebar({ onNewSearch }: SidebarProps) {
           )
         )}
 
-        {/* User dropdown - pops upward */}
+        {/* User dropdown */}
         {menuOpen && user && (
           <div className="absolute bottom-full left-3 right-3 mb-1 bg-[#232425] border border-[#333] rounded-xl shadow-card-lg py-1.5 z-50">
-            <div className="px-4 py-2.5 border-b border-[#2a2b2d]">
-              <p className="text-white text-sm font-medium truncate">{user.displayName || 'User'}</p>
-              <p className="text-[#666] text-xs truncate">{user.email}</p>
+            <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-[#2a2b2d]">
+              <div className="w-8 h-8 rounded-full overflow-hidden shrink-0">
+                {user.avatar ? (
+                  <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-[#333] flex items-center justify-center text-white text-xs font-medium">
+                    {(user.displayName || user.email)[0].toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-white text-sm font-medium truncate">{user.displayName || 'User'}</p>
+                <p className="text-[#666] text-xs truncate">{user.email}</p>
+              </div>
             </div>
             <button
               onClick={() => { setMenuOpen(false); router.push('/profile'); }}
@@ -178,5 +208,22 @@ export default function Sidebar({ onNewSearch }: SidebarProps) {
         )}
       </div>
     </aside>
+  );
+}
+
+function NavItem({ icon: Icon, label, active, onClick }: {
+  icon: typeof Home; label: string; href: string; active: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors
+        ${active ? 'text-white bg-[#2a2b2d]' : 'text-[#999] hover:text-white hover:bg-[#222]'}
+      `}
+    >
+      <Icon size={18} />
+      <span>{label}</span>
+    </button>
   );
 }

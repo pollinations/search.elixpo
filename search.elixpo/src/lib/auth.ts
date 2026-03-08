@@ -131,16 +131,18 @@ const COOKIE_OPTIONS = {
 };
 
 export function setAuthCookies(headers: Headers, tokens: TokenResponse) {
-  // Access token — short-lived (matches SSO expiry, typically 15min)
+  const thirtyDays = 30 * 86400;
+
+  // Access token — 30 days (auto-refreshed via refresh token)
   headers.append(
     'Set-Cookie',
-    `elixpo_access_token=${tokens.access_token}; Max-Age=${tokens.expires_in}; HttpOnly; Secure; SameSite=Lax; Path=/`
+    `elixpo_access_token=${tokens.access_token}; Max-Age=${thirtyDays}; HttpOnly; Secure; SameSite=Lax; Path=/`
   );
 
-  // Refresh token — long-lived (7 days)
+  // Refresh token — 30 days
   headers.append(
     'Set-Cookie',
-    `elixpo_refresh_token=${tokens.refresh_token}; Max-Age=${7 * 86400}; HttpOnly; Secure; SameSite=Lax; Path=/`
+    `elixpo_refresh_token=${tokens.refresh_token}; Max-Age=${thirtyDays}; HttpOnly; Secure; SameSite=Lax; Path=/`
   );
 }
 
