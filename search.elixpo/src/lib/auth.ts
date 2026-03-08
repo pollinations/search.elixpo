@@ -19,18 +19,22 @@ function getSSO() {
   return {
     clientId: getEnv('SSO_CLIENT_ID'),
     clientSecret: getEnv('SSO_CLIENT_SECRET'),
-    redirectUri: getEnv('SSO_REDIRECT_URI'),
   };
+}
+
+function getRedirectUri(req: NextRequest): string {
+  const origin = req.nextUrl.origin;
+  return `${origin}/api/auth/callback`;
 }
 
 // ── OAuth URL Builder ────────────────────────────────────────────────────────
 
-export function buildAuthorizationUrl(state: string): string {
-  const { clientId, redirectUri } = getSSO();
+export function buildAuthorizationUrl(state: string, req: NextRequest): string {
+  const { clientId } = getSSO();
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
-    redirect_uri: redirectUri,
+    redirect_uri: getRedirectUri(req),
     state,
     scope: 'openid profile email',
   });
@@ -47,8 +51,8 @@ export interface TokenResponse {
   scope: string;
 }
 
-export async function exchangeCodeForTokens(code: string): Promise<TokenResponse> {
-  const { clientId, clientSecret, redirectUri } = getSSO();
+export async function exchangeCodeForTokens(code: string, req: NextRequest): Promise<TokenResponse> {
+  const { clientId, clientSecret } = getSSO();
 
   const res = await fetch(`${ACCOUNTS_BASE}/api/auth/token`, {
     method: 'POST',
@@ -58,7 +62,7 @@ export async function exchangeCodeForTokens(code: string): Promise<TokenResponse
       code,
       client_id: clientId,
       client_secret: clientSecret,
-      redirect_uri: redirectUri,
+      redirect_uri: getRedirectUri(req),
     }),
   });
 

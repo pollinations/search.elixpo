@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // 1. Exchange code for tokens
-    const tokens = await exchangeCodeForTokens(code);
+    const tokens = await exchangeCodeForTokens(code, req);
 
     // 2. Fetch user profile from SSO
     const ssoUser = await fetchUserFromSSO(tokens.access_token);

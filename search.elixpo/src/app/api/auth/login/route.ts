@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const state = generateState();
   const returnTo = req.nextUrl.searchParams.get('returnTo') || '/';
 
-  const authUrl = buildAuthorizationUrl(state);
+  const authUrl = buildAuthorizationUrl(state, req);
 
   const headers = new Headers({
     Location: authUrl,
