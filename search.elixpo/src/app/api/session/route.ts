@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: backendHeaders(),
       body: JSON.stringify(body),
+      cache: 'no-store',
     });
     const data = await backendRes.json();
     return Response.json(data, { status: backendRes.status });
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
     }
     const backendRes = await fetch(backendUrl(`/api/session/${sessionId}`), {
       headers: backendHeaders(),
+      cache: 'no-store',
     });
     const data = await backendRes.json();
     return Response.json(data, { status: backendRes.status });

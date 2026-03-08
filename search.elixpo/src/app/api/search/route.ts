@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: backendHeaders(),
       body: JSON.stringify(backendPayload),
+      cache: 'no-store',
     });
 
     if (!backendRes.ok) {
