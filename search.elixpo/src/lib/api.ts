@@ -1,19 +1,28 @@
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:9002';
-const INTERNAL_KEY = process.env.INTERNAL_API_KEY || '';
-const API_KEY = process.env.API_KEY || '';
-const XID = process.env.XID || '';
+import { getRequestContext } from '@cloudflare/next-on-pages';
+
+function getEnv(key: string): string {
+  if (process.env[key]) return process.env[key]!;
+  try {
+    const ctx = getRequestContext();
+    return (ctx.env as unknown as Record<string, string>)[key] || '';
+  } catch {}
+  return '';
+}
 
 export function backendHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  if (INTERNAL_KEY) headers['X-Internal-Key'] = INTERNAL_KEY;
-  if (API_KEY) headers['X-API-Key'] = API_KEY;
+  const internalKey = getEnv('INTERNAL_API_KEY');
+  const apiKey = getEnv('API_KEY');
+  if (internalKey) headers['X-Internal-Key'] = internalKey;
+  if (apiKey) headers['X-API-Key'] = apiKey;
   return headers;
 }
 
 export function backendUrl(path: string): string {
-  return `${BACKEND_URL}${path}`;
+  const url = getEnv('BACKEND_URL') || 'http://localhost:9002';
+  return `${url}${path}`;
 }
 
 /**
@@ -21,6 +30,7 @@ export function backendUrl(path: string): string {
  * Returns true if valid, false otherwise.
  */
 export function validateXID(requestXID: string | null): boolean {
-  if (!XID) return true; // no XID configured = open access
-  return requestXID === XID;
+  const xid = getEnv('XID');
+  if (!xid) return true; // no XID configured = open access
+  return requestXID === xid;
 }
