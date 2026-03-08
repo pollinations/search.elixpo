@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: backendHeaders(),
       body: JSON.stringify({ query, limit, images }),
+      cache: 'no-store',
     });
 
     const data = await backendRes.json();
@@ -49,6 +50,7 @@ export async function GET(req: NextRequest) {
     const params = new URLSearchParams({ query, limit, images });
     const backendRes = await fetch(backendUrl(`/api/surf?${params}`), {
       headers: backendHeaders(),
+      cache: 'no-store',
     });
 
     const data = await backendRes.json();

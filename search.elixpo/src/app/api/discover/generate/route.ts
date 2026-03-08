@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: backendHeaders(),
       body: JSON.stringify({ categories }),
+      cache: 'no-store',
     });
 
     if (!backendRes.ok) {
