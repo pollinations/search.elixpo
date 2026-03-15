@@ -29,7 +29,7 @@
 
 <br/>
 
-![Architecture](./public/images/architechture.png)
+<img src="./public/images/architechture.png" alt="lixSearch Architecture" width="100%" />
 
 </div>
 
@@ -58,7 +58,7 @@ When you ask lixSearch a question, here's what happens behind the scenes:
 5. **We Synthesize** - An AI reads through everything and writes a clear, concise answer
 6. **You Get Results** - A beautifully formatted answer with clickable sources and relevant images
 
-![How Search Works Diagram](./assets/how-it-works.png)
+<img src="./public/images/search_arch.png" alt="How Search Works" width="100%" />
 
 ---
 
@@ -105,20 +105,20 @@ flowchart TD
     K -- "No" --> L["🤖 LLM Synthesis\n(Conversation History + RAG + Sources)"]
 
     L --> M["📡 Stream Response\n(SSE: real-time, word by word)"]
-    M --> N["✅ Answer with Sources"]
+    M --> N["Answer with Sources"]
 
     M -.-> O[("💾 Save to Cache\n& Session History")]
 
     style A fill:#4A90D9,stroke:#2C5F8A,color:#fff
     style C fill:#F5A623,stroke:#D4891A,color:#fff
     style J fill:#7ED321,stroke:#5FA318,color:#fff
-    style N fill:#7ED321,stroke:#5FA318,color:#fff
+    style N fill:#7ED321,stroke:#5FA318,color:#000
     style D fill:#9B59B6,stroke:#7D3C98,color:#fff
     style L fill:#E74C3C,stroke:#C0392B,color:#fff
 ```
 
 **Result:** Fast, accurate answers you can trust.
-[!The Searching Process Explained in Detail](./public/images/search_arch.png) 
+<img src="./public/images/search_arch.png" alt="The Searching Process Explained in Detail" width="100%" /> 
 
 ---
 
@@ -231,7 +231,7 @@ curl -X POST https://search.elixpo.com/v1/chat/completions \
 
 Each will give you a complete, sourced answer.
 
-[!Sample Results](./public/images/response.png)
+<img src="./public/images/response.png" alt="Sample Results" width="100%" />
 
 ---
 
