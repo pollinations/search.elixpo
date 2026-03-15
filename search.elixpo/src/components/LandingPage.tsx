@@ -30,9 +30,42 @@ function StatBadge({ value, label }: { value: string; label: string }) {
   );
 }
 
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  name: 'lixSearch',
+  url: 'https://search.elixpo.com',
+  description: 'Open-source AI-powered search engine that searches the web, fetches content, and synthesizes answers with real sources and citations.',
+  applicationCategory: 'SearchApplication',
+  operatingSystem: 'Any',
+  author: {
+    '@type': 'Person',
+    name: 'Ayushman Bhattacharya',
+    url: 'https://github.com/elixpo',
+  },
+  offers: {
+    '@type': 'Offer',
+    price: '0',
+    priceCurrency: 'USD',
+  },
+  featureList: [
+    'Multi-source web search',
+    'Deep search with query decomposition',
+    'Real citations and source verification',
+    'Semantic caching with vector embeddings',
+    'Session memory with hybrid storage',
+    'OpenAI-compatible API',
+    'Server-Sent Events streaming',
+  ],
+};
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#0a0c14] text-white overflow-y-auto custom-scrollbar">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Subtle background glow */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-indigo-600/[0.07] rounded-full blur-[120px]" />
