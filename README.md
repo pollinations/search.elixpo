@@ -1,10 +1,37 @@
-# 🔍 lixSearch - Your Intelligent Search Assistant
+<div align="center">
 
-> **Smart searching made simple. Ask a question, get answers with sources.**
+# 🔍 lixSearch
 
-lixSearch is your personal research assistant that searches the web, watches videos, finds images, and synthesizes everything into clear, easy-to-read answers. Just ask, and get back thoughtfully researched results with sources you can trust.
+**Intelligent search assistant with real-time web research, RAG, and OpenAI-compatible API**
 
-![Product Demo Placeholder - Hero Image of search interface](./assets/hero-image.png)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
+[![OpenAI Compatible](https://img.shields.io/badge/API-OpenAI%20Compatible-412991.svg?logo=openai&logoColor=white)](#-api-usage)
+[![Redis](https://img.shields.io/badge/Redis-Cache-DC382D.svg?logo=redis&logoColor=white)](https://redis.io/)
+[![Playwright](https://img.shields.io/badge/Playwright-Search%20Agents-2EAD33.svg?logo=playwright&logoColor=white)](https://playwright.dev/)
+[![Cloudflare Pages](https://img.shields.io/badge/Frontend-Cloudflare%20Pages-F38020.svg?logo=cloudflare&logoColor=white)](https://pages.cloudflare.com/)
+
+[![GitHub stars](https://img.shields.io/github/stars/pollinations/lixSearch?style=social)](https://github.com/pollinations/lixSearch/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/pollinations/lixSearch?style=social)](https://github.com/pollinations/lixSearch/network)
+[![GitHub issues](https://img.shields.io/github/issues/pollinations/lixSearch)](https://github.com/pollinations/lixSearch/issues)
+[![GitHub last commit](https://img.shields.io/github/last-commit/pollinations/lixSearch)](https://github.com/pollinations/lixSearch/commits/main)
+
+<br/>
+
+<a href="https://star-history.com/#pollinations/lixSearch&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=pollinations/lixSearch&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=pollinations/lixSearch&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=pollinations/lixSearch&type=Date" width="600" />
+ </picture>
+</a>
+
+<br/>
+
+![Architecture](./public/images/architechture.png)
+
+</div>
 
 ---
 
@@ -37,107 +64,141 @@ When you ask lixSearch a question, here's what happens behind the scenes:
 
 ## 🌍 Real-World Use Cases
 
-- Ask about any topic and get a comprehensive overview with sources you can trust.
-- Get real-time info about places, hotels, activities, and travel tips all in one place.
-- Follow-up questions are answered in context. The assistant remembers your conversation.
-- Ask about the latest news on any topic and get today's results with sources.
+- Any NLP based model that has the ability to perform tools / function calling can use this 
+- Completely self hosted, so you can run it on your own infrastructure and customize it to your needs on CPU
+- Can surf youtube / web_images / indexed web pages to find information and synthesize it into a single answer
+- Can be used as a backend for any search engine, chatbot, or assistant that needs to
+  - Search the web for information
+  - Find relevant videos and images
+  - Synthesize information into a clear answer
+  - Provide sources for all information
+- Can be modified into single endpoints for specific use cases like:
+  - Product search with reviews and images
+  - Recipe search with videos and photos
+  - News search with original sources and summaries
+  - Location search with details, reviews, and photos
 
-![Use Cases Placeholder](./assets/use-cases.png)
 
 ---
 
 ## 🛠️ How The System Works (The Simple Version)
 
-Imagine lixSearch as a research assistant with superpowers:
+```mermaid
+flowchart TD
+    A["🔍 You Ask a Question"] --> B["🧠 Query Analysis & Understanding"]
+    B --> C{"Cache Hit?"}
+    C -- "Yes (cosine > 0.90)" --> J["⚡ Instant Cached Answer"]
+    C -- "No" --> D["🔀 Tool Router"]
 
-```
-You Ask a Question
-  ↓
-The System Understands What You Mean
-  ↓
-Multiple Searchers Look for Answers (simultaneously)
-  ├─ Web pages
-  ├─ YouTube videos
-  └─ Images
-  ↓
-All Information Gets Analyzed
-  ↓
-An AI Writes a Clear Answer
-  ↓
-You Get a Result with Sources
+    D --> E["🌐 Web Search\n(Playwright Agents)"]
+    D --> F["🎬 YouTube Search\n(Metadata + Transcripts)"]
+    D --> G["🖼️ Image Search"]
+    D --> H["📄 Page Fetch\n(Full Text Extraction)"]
+
+    E --> I["📚 RAG Context Assembly\nChunk → Embed → Vector Search"]
+    F --> I
+    G --> I
+    H --> I
+
+    I --> K{"Need More Info?"}
+    K -- "Yes (max 3 loops)" --> D
+    K -- "No" --> L["🤖 LLM Synthesis\n(Conversation History + RAG + Sources)"]
+
+    L --> M["📡 Stream Response\n(SSE: real-time, word by word)"]
+    M --> N["✅ Answer with Sources"]
+
+    M -.-> O[("💾 Save to Cache\n& Session History")]
+
+    style A fill:#4A90D9,stroke:#2C5F8A,color:#fff
+    style C fill:#F5A623,stroke:#D4891A,color:#fff
+    style J fill:#7ED321,stroke:#5FA318,color:#fff
+    style N fill:#7ED321,stroke:#5FA318,color:#fff
+    style D fill:#9B59B6,stroke:#7D3C98,color:#fff
+    style L fill:#E74C3C,stroke:#C0392B,color:#fff
 ```
 
 **Result:** Fast, accurate answers you can trust.
 
-![Architecture Overview Placeholder](./assets/system-overview.png)
 
 ---
 
-## 🚀 Key Capabilities
+## 🎁 Core Capabilities
 
-- Answers that come to you in real-time as they're being written.
-- The system learns from your searches and serves cached results instantly for repeat questions.
-- Get summaries and transcripts from YouTube videos automatically.
-- Relevant images are found and included with your answers.
-- Every answer includes links to where the information came from.
-- Ask follow-up questions and the system remembers what you were discussing.
-
----
-
-## 💡 What You Can Do With lixSearch
-
-- Ask about products, recipes, news, ideas, places—basically anything you'd ask Google.
-- Not just links. You get summaries that explain what each result is about.
-- Get information from YouTube videos, including automatic transcripts.
-- Search for locations, get details about them, find reviews and information.
-- Find images related to your search right there with your results.
-- Ask follow-up questions naturally without repeating yourself.
+| Capability | Implementation |
+|-----------|---------------|
+| **Real-time streaming** | Server-Sent Events (SSE) — tokens stream as they're generated, not buffered |
+| **Semantic caching** | Redis DB0 with cosine similarity (threshold 0.90) — repeat queries resolve in <15ms |
+| **Multi-turn memory** | Two-tier hybrid: Redis hot window (20 msgs) + Huffman-compressed disk archive (30-day TTL) |
+| **Dynamic context** | Token-budget based history injection (6000 tokens) — model gets as much context as it needs |
+| **Source attribution** | Every claim links to the original URL, with full-text extraction and relevance scoring |
+| **Deep search mode** | Decomposes complex queries into sub-queries, runs parallel mini-pipelines, synthesizes a unified answer |
 
 ---
 
-## 🎁 Bonus Features
+## 📖 API Usage
 
-- Blazing Fast - Answers show up in real-time, word by word
-- Smart Cache - Ask the same thing twice? Get instant answers
-- Works Offline Content - Upload documents, search their content
-- Clean Interface - Simple, beautiful results you can trust
-- Always Sourced - Click through to the original sources
+lixSearch exposes an **OpenAI-compatible** API. Any client that works with OpenAI works with lixSearch.
+
+### Basic search
+```bash
+curl -X POST https://search.elixpo.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "What is the best way to learn Python?"}],
+    "stream": true
+  }'
+```
+
+### Multi-turn conversation
+```bash
+curl -X POST https://search.elixpo.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "What is the best way to learn Python?"},
+      {"role": "assistant", "content": "Here are the top approaches..."},
+      {"role": "user", "content": "What about free resources specifically?"}
+    ],
+    "stream": true
+  }'
+```
+The full conversation history is injected into the model context — no session ID management needed.
+
+### Non-streaming (JSON response)
+```bash
+curl -X POST https://search.elixpo.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Latest breakthroughs in AI"}],
+    "stream": false
+  }'
+```
+Returns a standard `chat.completion` object with `usage` (prompt/completion tokens) and `choices[0].message.content`.
+
+### Deep search
+```bash
+curl -X POST https://search.elixpo.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Compare transformer architectures for long-context reasoning"}],
+    "stream": true,
+    "deep_search": true
+  }'
+```
+
+### Available endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/chat/completions` | POST | OpenAI-compatible chat completions (stream + non-stream) |
+| `/v1/models` | GET | List available models |
+| `/api/search` | POST/GET | Legacy search endpoint (SSE) |
+| `/api/stats` | GET | Redis memory, disk archive stats, session counts |
+| `/api/health` | GET | Health check |
+| `/docs` | GET | Interactive API documentation (Scalar UI) |
 
 ---
 
-## 📖 How to Use lixSearch
-
-### 🔎 Basic Search
-```
-Ask: "What's the best way to learn Python?"
-Get: A complete guide with links to tutorials, videos, and recommended resources
-```
-
-### 💬 Follow-Up Questions  
-```
-You: "What's the best way to learn Python?"
-lixSearch: [Gives comprehensive answer]
-You: "What about free resources?"
-lixSearch: [Remembers context, answers specifically about free options]
-```
-
-### 📚 Search with Sources
-```
-You: "Latest breakthroughs in AI"
-lixSearch: [Results with links, dates, and original sources]
-```
-
----
-
-## 🎯 Getting Started
-
-- No Installation Needed - Just visit the app, type your question, and get answers. That's it.
-
-- Questions? - The system learns from how you ask. The more natural your question, the better the results.
-
-![Getting Started Placeholder](./assets/getting-started.png)
-
----
 
 ## ❓ Why Use lixSearch?
 
@@ -168,7 +229,7 @@ lixSearch: [Results with links, dates, and original sources]
 
 Each will give you a complete, sourced answer.
 
-![Try It Yourself Placeholder](./assets/demo-screenshot.png)
+
 
 ---
 
