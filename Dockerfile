@@ -54,6 +54,7 @@ RUN playwright install-deps chromium
 COPY lixsearch /app/lixsearch
 COPY tester /app/tester
 COPY entrypoint.sh /app/entrypoint.sh
+COPY public /app/public
 COPY version.cfg requirements.txt openapi.yaml /app/
 
 RUN chmod +x /app/entrypoint.sh && \

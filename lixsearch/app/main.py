@@ -85,6 +85,8 @@ class lixSearch:
         async def chat_completions_wrapper(session_id):
             return await chat.chat_completions(session_id, self.pipeline_initialized)
         
+        _public_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'public')
+
         async def scalar_ui():
             html = '''<!DOCTYPE html>
 <html>
@@ -92,6 +94,7 @@ class lixSearch:
     <title>lixSearch API</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <style>* { margin: 0; padding: 0; } body { margin: 0; }</style>
 </head>
 <body>
@@ -100,6 +103,10 @@ class lixSearch:
 </body>
 </html>'''
             return html, 200, {"Content-Type": "text/html"}
+
+        async def serve_favicon():
+            favicon_path = os.path.join(_public_dir, 'images', 'icon.png')
+            return await send_file(favicon_path, mimetype='image/png')
         
         self.app.route('/api/health', methods=['GET'])(health_check_wrapper)
         self.app.route('/api/search', methods=['POST', 'GET'])(search_wrapper)
@@ -142,6 +149,7 @@ class lixSearch:
         # Scalar API documentation UI
         self.app.route('/docs', methods=['GET'])(scalar_ui)
         self.app.route('/api/docs', methods=['GET'])(scalar_ui)
+        self.app.route('/favicon.png', methods=['GET'])(serve_favicon)
         
         # OpenAPI spec endpoints
         _openapi_spec_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'openapi.yaml')
