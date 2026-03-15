@@ -18,6 +18,7 @@ audio_cache/
 .*json
 node_modules/
 cached_audio/
+out/
 nltk_data/
 model_cache/
 cache/
