@@ -212,6 +212,30 @@ html, body {
   background-clip: text;
 }
 
+/* Pollinations branding shimmer */
+.pollinations-shimmer {
+  background: linear-gradient(
+    90deg,
+    #a78bfa 0%,
+    #818cf8 20%,
+    #6ee7b7 40%,
+    #a78bfa 60%,
+    #818cf8 80%,
+    #6ee7b7 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: pollinations-flow 3s ease-in-out infinite;
+}
+
+@keyframes pollinations-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 /* Hide scrollbar on source cards horizontal scroll */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

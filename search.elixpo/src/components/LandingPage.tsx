@@ -1,12 +1,12 @@
 'use client';
 
-import { Search, BookOpen, Zap, Globe, ArrowRight, ExternalLink, Sparkles, Database, Shield } from 'lucide-react';
+import { Search, BookOpen, Zap, Globe, ExternalLink, Sparkles, Database, Shield } from 'lucide-react';
 
 const LINKS = {
   trySearch: 'https://search.elixpo.com',
   docs: 'https://search.elixpo.com/docs',
   pollinations: 'https://pollinations.ai',
-  github: 'https://github.com/elixpo',
+  github: 'https://github.com/pollinations/lixsearch',
 };
 
 function FeatureCard({ icon: Icon, title, description }: { icon: React.ElementType; title: string; description: string }) {
@@ -53,12 +53,11 @@ export default function LandingPage() {
             >
               Docs
             </a>
-            <a
-              href={LINKS.trySearch}
-              className="text-sm font-medium px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 transition-colors"
+            <span
+              className="text-sm font-medium px-4 py-2 rounded-lg bg-indigo-600/50 text-white/60 cursor-default"
             >
-              Try it
-            </a>
+              Coming soon
+            </span>
           </div>
         </nav>
 
@@ -81,13 +80,12 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-            <a
-              href={LINKS.trySearch}
-              className="group flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all hover:shadow-lg hover:shadow-indigo-600/25"
+            <span
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600/50 text-white/60 font-medium cursor-default"
             >
               Try lixSearch
-              <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-            </a>
+              <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/10 text-white/40 font-semibold">Coming soon</span>
+            </span>
             <a
               href={LINKS.docs}
               className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/[0.05] border border-white/[0.1] hover:bg-white/[0.08] hover:border-white/[0.2] text-white/70 font-medium transition-all"
@@ -101,7 +99,7 @@ export default function LandingPage() {
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-6 py-3 rounded-xl text-white/40 hover:text-white/70 font-medium transition-colors"
             >
-              Pollinations AI
+              <span className="pollinations-shimmer">Pollinations AI</span>
               <ExternalLink size={14} />
             </a>
           </div>
@@ -166,7 +164,6 @@ export default function LandingPage() {
             </div>
             <pre className="p-5 text-sm font-mono text-white/60 overflow-x-auto leading-relaxed">
               <code>{`curl -X POST https://search.elixpo.com/api/search \\
-  -H "X-API-Key: your_key" \\
   -H "Content-Type: application/json" \\
   -d '{"query": "how does RLHF work?", "stream": true}'`}</code>
             </pre>
@@ -178,7 +175,10 @@ export default function LandingPage() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <img src="/favicon.png" alt="lixSearch" className="w-5 h-5 opacity-40" />
-              <span className="text-sm text-white/30">lixSearch &mdash; open-source AI search</span>
+              <span className="text-sm text-white/30">
+                Built by <span className="text-white/50">Ayushman</span> with{' '}
+                <a href={LINKS.pollinations} target="_blank" rel="noopener noreferrer" className="pollinations-shimmer hover:opacity-80 transition-opacity">Pollinations.ai</a>
+              </span>
             </div>
             <div className="flex items-center gap-6">
               <a href={LINKS.docs} className="text-sm text-white/30 hover:text-white/60 transition-colors">Docs</a>
