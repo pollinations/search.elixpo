@@ -86,34 +86,19 @@ class lixSearch:
             return await chat.chat_completions(session_id, self.pipeline_initialized)
         
         async def scalar_ui():
-            html = '''
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>lixSearch API Documentation</title>
-                <meta charset="utf-8" />
-                <meta name="viewport" content="width=device-width, initial-scale=1" />
-                <style>
-                    * {
-                        margin: 0;
-                        padding: 0;
-                    }
-                    html {
-                        font-family: system-ui, -apple-system, sans-serif;
-                        background-color: #fafafa;
-                    }
-                    body {
-                        margin: 0;
-                        padding: 0;
-                    }
-                </style>
-            </head>
-            <body>
-                <script id="api-reference" data-url="/openapi.json"></script>
-                <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-            </body>
-            </html>
-            '''
+            html = '''<!DOCTYPE html>
+<html>
+<head>
+    <title>lixSearch API</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>* { margin: 0; padding: 0; } body { margin: 0; }</style>
+</head>
+<body>
+    <script id="api-reference" data-url="/openapi.json" data-configuration='{"theme":"kepler","layout":"modern","hideDarkModeToggle":false,"searchHotKey":"k","defaultOpenAllTags":false}'></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>'''
             return html, 200, {"Content-Type": "text/html"}
         
         self.app.route('/api/health', methods=['GET'])(health_check_wrapper)
