@@ -48,6 +48,16 @@ STATUS_MESSAGES = {
         "Creating your response",
         "Building the answer",
     ],
+    "generating_image": [
+        "Generating image, this may take 10-15 seconds",
+        "Creating your image, hang tight for about 10-15s",
+        "Image generation in progress, usually takes 10-15 seconds",
+    ],
+    "image_generated": [
+        "Image generated, preparing final response",
+        "Image ready, putting together your answer",
+        "Image created, finalizing response",
+    ],
     "preparing": [
         "Preparing next step",
         "Processing results",

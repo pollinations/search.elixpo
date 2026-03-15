@@ -225,7 +225,8 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
 
         elif function_name == "create_image":
             prompt = function_args.get("prompt")
-            web_event = emit_event_func("INFO", f"<TASK>Generating image: '{prompt[:60]}'</TASK>")
+            from pipeline.sse_messages import get_status_message
+            web_event = emit_event_func("INFO", get_status_message("generating_image"))
             if web_event:
                 yield web_event
             try:
@@ -235,7 +236,7 @@ Sources: {cache_metadata.get('sources', 'N/A')}"""
                 memoized_results["generated_images"].append(image_url)
                 result = f"Generated image for prompt: '{prompt}'\nImage URL: {image_url}"
                 logger.info(f"Generated image: {image_url}")
-                done_event = emit_event_func("INFO", "<TASK>Image generated successfully</TASK>")
+                done_event = emit_event_func("INFO", get_status_message("image_generated"))
                 if done_event:
                     yield done_event
                 yield result
