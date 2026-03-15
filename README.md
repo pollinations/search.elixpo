@@ -19,7 +19,7 @@
 
 <br/>
 
-<img src="./search.elixpo/public/og-image.png.png" alt="lixSearch" width="100%" />
+<img src="./search.elixpo/public/og-image.png" alt="lixSearch" width="100%" />
 
 </div>
 
