@@ -122,6 +122,22 @@ class lixSearch:
         async def completions_wrapper():
             return await completions.chat_completions(self.pipeline_initialized)
         self.app.route('/v1/chat/completions', methods=['POST'])(completions_wrapper)
+
+        async def models_list():
+            """GET /v1/models — OpenAI-compatible model listing."""
+            from pipeline.config import RESPONSE_MODEL
+            return jsonify({
+                "object": "list",
+                "data": [
+                    {
+                        "id": RESPONSE_MODEL,
+                        "object": "model",
+                        "created": 1700000000,
+                        "owned_by": "elixpo",
+                    }
+                ],
+            })
+        self.app.route('/v1/models', methods=['GET'])(models_list)
         self.app.route('/api/session/create', methods=['POST'])(session.create_session)
         self.app.route('/api/session/<session_id>', methods=['GET'])(session.get_session_info)
         self.app.route('/api/session/<session_id>/kg', methods=['GET'])(session.get_session_kg)
@@ -221,13 +237,31 @@ class lixSearch:
                 try:
                     from pipeline.config import HYBRID_STARTUP_CLEANUP
                     if HYBRID_STARTUP_CLEANUP:
-                        await asyncio.to_thread(_run_archive_startup_cleanup)
+                        await asyncio.to_thread(_run_archive_cleanup)
                 except Exception as e:
                     logger.warning(f"[APP] Archive startup cleanup failed (non-fatal): {e}")
 
+                # Start periodic maintenance task (cleanup + Redis memory monitoring)
+                async def _periodic_maintenance():
+                    """Run every 6 hours: archive cleanup + Redis memory check."""
+                    while True:
+                        await asyncio.sleep(6 * 3600)
+                        try:
+                            await asyncio.to_thread(_run_archive_cleanup)
+                            await asyncio.to_thread(_run_redis_memory_check)
+                        except Exception as e:
+                            logger.warning(f"[APP] Periodic maintenance error: {e}")
+
+                asyncio.create_task(_periodic_maintenance())
+
         @self.app.after_serving
         async def shutdown():
-            logger.info("[APP] Shutting down lixSearch...")
+            logger.info("[APP] Shutting down lixSearch — flushing active sessions to disk...")
+            try:
+                await asyncio.to_thread(_run_archive_cleanup)
+            except Exception as e:
+                logger.warning(f"[APP] Shutdown cleanup error: {e}")
+            logger.info("[APP] Shutdown complete")
     
     def run(self, host: str = "0.0.0.0", port: int = 8000, workers: int = 1):
         import hypercorn.asyncio

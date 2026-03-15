@@ -21,7 +21,7 @@ def format_sse_event_openai(event_type: str, content: str, request_id: str = Non
             {
                 "index": 0,
                 "delta": {
-                    "role": "assistant" if event_type == "INFO" else "content",
+                    "role": "assistant",
                     "content": content
                 },
                 "finish_reason": "stop" if is_done_signal else None

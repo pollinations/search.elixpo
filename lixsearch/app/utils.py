@@ -26,10 +26,9 @@ def count_tokens(text: str, model: str = "gpt-5-") -> int:
 
 
 def format_openai_response(content: str, request_id: str = None) -> str:
-    escaped_content = content.replace('\n', '\\n')
     completion_tokens = count_tokens(content)
-    prompt_tokens = 0 
-    
+    prompt_tokens = 0
+
     response = {
         "id": request_id or f"chatcmpl-{uuid.uuid4().hex[:REQUEST_ID_HEX_SLICE_SIZE]}",
         "object": "chat.completion",
@@ -40,7 +39,7 @@ def format_openai_response(content: str, request_id: str = None) -> str:
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": escaped_content
+                    "content": content
                 },
                 "finish_reason": "stop"
             }
@@ -65,7 +64,7 @@ def validate_query(query: str, max_length: int = 5000) -> bool:
     return True
 
 
-def validate_session_id(session_id: str, pattern: str = r'^[a-zA-Z0-9\-]{8,36}$') -> bool:
+def validate_session_id(session_id: str, pattern: str = r'^[a-zA-Z0-9\-_]{4,64}$') -> bool:
     if not session_id or not isinstance(session_id, str):
         return False
     return bool(re.match(pattern, session_id))
