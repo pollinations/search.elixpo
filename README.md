@@ -19,21 +19,13 @@
 
 <br/>
 
-<a href="https://star-history.com/#pollinations/lixSearch&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=pollinations/lixSearch&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=pollinations/lixSearch&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=pollinations/lixSearch&type=Date" width="600" />
- </picture>
-</a>
-
-<br/>
-
-<img src="./public/images/architechture.png" alt="lixSearch Architecture" width="100%" />
+<img src="./search.elixpo/public/og-image.png.png" alt="lixSearch" width="100%" />
 
 </div>
 
 ---
+
+
 
 ## ✨ What Makes lixSearch Different?
 
@@ -118,7 +110,7 @@ flowchart TD
 ```
 
 **Result:** Fast, accurate answers you can trust.
-<img src="./public/images/search_arch.png" alt="The Searching Process Explained in Detail" width="100%" /> 
+<img src="./public/images/architechture.png.png" alt="The Searching Process Explained in Detail" width="100%" /> 
 
 ---
 
@@ -135,6 +127,7 @@ flowchart TD
 
 ---
 
+
 ## 📖 API Usage 
 
 > Right now we have stopped public access, but it will be available soon with [Pollinations.ai API] (https://enter.pollinations.ai). In the meantime, you can run your own instance of lixSearch and use the same API.
@@ -143,7 +136,7 @@ lixSearch exposes an **OpenAI-compatible** API. Any client that works with OpenA
 
 ### Basic search
 ```bash
-curl -X POST https://search.elixpo.com/v1/chat/completions \
+curl -X POST https://apisearch.elixpo.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "What is the best way to learn Python?"}],
@@ -153,7 +146,7 @@ curl -X POST https://search.elixpo.com/v1/chat/completions \
 
 ### Multi-turn conversation
 ```bash
-curl -X POST https://search.elixpo.com/v1/chat/completions \
+curl -X POST https://apisearch.elixpo.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -168,7 +161,7 @@ The full conversation history is injected into the model context — no session 
 
 ### Non-streaming (JSON response)
 ```bash
-curl -X POST https://search.elixpo.com/v1/chat/completions \
+curl -X POST https://apisearch.elixpo.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "Latest breakthroughs in AI"}],
@@ -179,7 +172,7 @@ Returns a standard `chat.completion` object with `usage` (prompt/completion toke
 
 ### Deep search
 ```bash
-curl -X POST https://search.elixpo.com/v1/chat/completions \
+curl -X POST https://apisearch.elixpo.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "Compare transformer architectures for long-context reasoning"}],
@@ -200,6 +193,18 @@ curl -X POST https://search.elixpo.com/v1/chat/completions \
 | `/docs` | GET | Interactive API documentation (Scalar UI) |
 
 ---
+
+<br/>
+
+<a href="https://star-history.com/#pollinations/lixSearch&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=pollinations/lixSearch&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=pollinations/lixSearch&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=pollinations/lixSearch&type=Date" width="600" />
+ </picture>
+</a>
+
+<br/>
 
 
 ## ❓ Why Use lixSearch?
@@ -240,11 +245,11 @@ Each will give you a complete, sourced answer.
 > This is the flow of the request that we have from the CF Reverse proxy 
 
 ```
-Browser → search.elixpo.com (Cloudflare Pages, edge)
+Browser → apisearch.elixpo.com (Cloudflare Pages, edge)
            ↓
          Next.js API route (e.g. /api/search/route.ts)
            ↓
-         backendUrl("/api/search") → "http://157.230.129.96:10001/api/search"
+         backendUrl("/api/search") → "http://apisearch.elixpo.com/api/search"
            ↓
          fetch() with headers:
            X-API-Key: <API_KEY secret>           ← nginx auth on :10001
