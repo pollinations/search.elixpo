@@ -12,7 +12,7 @@ from sessions.main import get_session_manager
 from ragService.main import get_retrieval_system
 from chatEngine.main import initialize_chat_engine
 from commons.requestID import RequestIDMiddleware
-from app.gateways import health, search, session, chat, stats, websocket, surf, discover, completions, image
+from app.gateways import health, search, session, chat, stats, websocket, surf, discover, completions, image, export
 logger = logging.getLogger("lixsearch-api")
 
 
@@ -190,6 +190,9 @@ class lixSearch:
         async def serve_image_wrapper(image_id):
             return await image.serve_image(image_id)
         self.app.route('/api/image/<image_id>', methods=['GET'])(serve_image_wrapper)
+
+        # PDF export endpoint
+        self.app.route('/api/export/pdf', methods=['POST'])(export.export_pdf)
     
     def _register_error_handlers(self):
         @self.app.errorhandler(404)
