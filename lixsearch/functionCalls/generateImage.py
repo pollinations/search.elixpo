@@ -2,6 +2,7 @@ import asyncio
 import itertools
 import random
 import os
+import uuid
 import requests
 from urllib.parse import quote
 from dotenv import load_dotenv
@@ -21,18 +22,25 @@ async def create_image_from_prompt(prompt: str) -> str:
     model = next(_model_cycle)
     seed = random.randint(0, 10000)
     t0 = time.perf_counter()
-    image_url = f"{POLLINATIONS_ENDPOINT_IMAGE}{quote(prompt)}?model={model}&height=512&width=512&seed={seed}&quality=hd&enhance=true"
+    upstream_url = f"{POLLINATIONS_ENDPOINT_IMAGE}{quote(prompt)}?model={model}&height=512&width=512&seed={seed}&quality=hd&enhance=true"
 
     headers = {
         "Authorization": f"Bearer {os.getenv('TOKEN')}"
     }
 
     response = await asyncio.to_thread(
-        requests.get, image_url, headers=headers, timeout=60
+        requests.get, upstream_url, headers=headers, timeout=60
     )
     response.raise_for_status()
     print(f"Image generated with {model} in {time.perf_counter() - t0:.2f} seconds")
-    return image_url
+
+    # Store image in memory and return self-domain URL
+    from app.gateways.image import store_image
+    image_id = str(uuid.uuid4())
+    content_type = response.headers.get("Content-Type", "image/png")
+    store_image(image_id, response.content, content_type)
+
+    return f"/api/image/{image_id}"
 
 
 if __name__ == "__main__":

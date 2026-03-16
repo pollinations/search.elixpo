@@ -12,7 +12,7 @@ from sessions.main import get_session_manager
 from ragService.main import get_retrieval_system
 from chatEngine.main import initialize_chat_engine
 from commons.requestID import RequestIDMiddleware
-from app.gateways import health, search, session, chat, stats, websocket, surf, discover, completions
+from app.gateways import health, search, session, chat, stats, websocket, surf, discover, completions, image
 logger = logging.getLogger("lixsearch-api")
 
 
@@ -185,6 +185,11 @@ class lixSearch:
 
         self.app.route('/api/surf', methods=['POST', 'GET'])(surf_wrapper)
         self.app.route('/api/discover/generate', methods=['POST'])(discover_generate_wrapper)
+
+        # Image proxy endpoint (serves generated images by ID)
+        async def serve_image_wrapper(image_id):
+            return await image.serve_image(image_id)
+        self.app.route('/api/image/<image_id>', methods=['GET'])(serve_image_wrapper)
     
     def _register_error_handlers(self):
         @self.app.errorhandler(404)
