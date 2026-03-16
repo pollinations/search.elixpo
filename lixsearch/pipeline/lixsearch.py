@@ -52,6 +52,16 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         f"deep_search={deep_search}"
     )
 
+    # Register session in SessionManager so /api/session/* routes can find it
+    if session_id:
+        try:
+            from sessions.main import get_session_manager
+            sm = get_session_manager()
+            if not sm.get_session(session_id):
+                sm.create_session(user_query or "(image query)", session_id=session_id)
+        except Exception:
+            pass
+
     def emit_event(event_type, message):
         if event_id:
             return format_sse(event_type, message)

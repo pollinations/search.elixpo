@@ -49,9 +49,13 @@ async def get_session_info(session_id: str):
             logger.warning(f"[{request_id}] session={session_id} not found")
             return jsonify({"error": "Session not found"}), 404
 
-        retrieval_system = get_retrieval_system()
-        rag_engine = retrieval_system.get_rag_engine(session_id)
-        rag_stats = rag_engine.get_stats()
+        rag_stats = {}
+        try:
+            retrieval_system = get_retrieval_system()
+            rag_engine = retrieval_system.get_rag_engine(session_id)
+            rag_stats = rag_engine.get_stats() if rag_engine else {}
+        except Exception:
+            pass
 
         return jsonify({
             "session_id": session_id,
@@ -75,16 +79,20 @@ async def get_session_kg(session_id: str):
 
     try:
         logger.info(f"[{request_id}] Getting KG for session: {session_id}")
+        session_manager = get_session_manager()
+        if not session_manager.get_session(session_id):
+            return jsonify({"error": "Session not found"}), 404
+
         retrieval_system = get_retrieval_system()
         rag_engine = retrieval_system.get_rag_engine(session_id)
-        context = rag_engine.get_full_context(session_id)
+        context = rag_engine.get_full_context(session_id) if rag_engine else {}
 
-        if "error" in context:
+        if isinstance(context, dict) and "error" in context:
             logger.warning(f"[{request_id}] KG fetch error for session: {session_id}")
             return jsonify(context), 404
 
         return jsonify({
-            **context,
+            **(context if isinstance(context, dict) else {"context": context}),
             "request_id": request_id
         })
 
@@ -101,21 +109,25 @@ async def query_session_kg(session_id: str):
 
     try:
         logger.info(f"[{request_id}] Querying KG for session: {session_id}")
+        session_manager = get_session_manager()
+        if not session_manager.get_session(session_id):
+            return jsonify({"error": "Session not found"}), 404
+
         data = await request.get_json()
         query = data.get("query", "").strip()
-        top_k = data.get("top_k", 5)
+        top_k = data.get("top_k", 10)
 
         if not query:
             return jsonify({"error": "Query is required"}), 400
 
         retrieval_system = get_retrieval_system()
         rag_engine = retrieval_system.get_rag_engine(session_id)
-        results = rag_engine.retrieve_context(query, top_k=top_k)
+        results = rag_engine.retrieve_context(query, top_k=top_k) if rag_engine else []
 
         return jsonify({
             "query": query,
             "session_id": session_id,
-            "results": results,
+            "results": results if isinstance(results, list) else [],
             "request_id": request_id
         })
 
@@ -132,11 +144,15 @@ async def get_entity_evidence(session_id: str, entity: str):
 
     try:
         logger.info(f"[{request_id}] Getting entity evidence: {entity} for session: {session_id}")
+        session_manager = get_session_manager()
+        if not session_manager.get_session(session_id):
+            return jsonify({"error": "Session not found"}), 404
+
         retrieval_system = get_retrieval_system()
         rag_engine = retrieval_system.get_rag_engine(session_id)
-        results = rag_engine.retrieve_context(entity, url=session_id, top_k=3)
+        results = rag_engine.retrieve_context(entity, url=session_id, top_k=3) if rag_engine else []
 
-        if "error" in results:
+        if isinstance(results, dict) and "error" in results:
             logger.warning(f"[{request_id}] Entity not found: {entity}")
             return jsonify(results), 404
 
@@ -159,17 +175,23 @@ async def get_session_summary(session_id: str):
 
     try:
         logger.info(f"[{request_id}] Getting summary for session: {session_id}")
-        retrieval_system = get_retrieval_system()
-        rag_engine = retrieval_system.get_rag_engine(session_id)
-        stats = rag_engine.get_stats()
-
-        if not stats:
-            logger.warning(f"[{request_id}] Session not found: {session_id}")
+        session_manager = get_session_manager()
+        session_data = session_manager.get_session(session_id)
+        if not session_data:
             return jsonify({"error": "Session not found"}), 404
+
+        rag_stats = {}
+        try:
+            retrieval_system = get_retrieval_system()
+            rag_engine = retrieval_system.get_rag_engine(session_id)
+            rag_stats = rag_engine.get_stats() if rag_engine else {}
+        except Exception:
+            pass
 
         return jsonify({
             "session_id": session_id,
-            "stats": stats,
+            "summary": session_manager.get_session_summary(session_id),
+            "stats": rag_stats,
             "request_id": request_id
         })
 

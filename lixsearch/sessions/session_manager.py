@@ -121,12 +121,12 @@ class SessionManager:
             if session:
                 session.add_message_to_history(role, content, metadata)
     
-    def get_conversation_history(self, session_id: str) -> List[Dict]:
+    def get_conversation_history(self, session_id: str):
         with self.lock:
             session = self.sessions.get(session_id)
             if session:
                 return session.get_conversation_history()
-            return []
+            return None
     
     def set_search_context(self, session_id: str, context: str):
         with self.lock:
