@@ -4,7 +4,7 @@ import { Search, BookOpen, Zap, Globe, ExternalLink, Sparkles, Database, Shield 
 
 const LINKS = {
   trySearch: 'https://search.elixpo.com',
-  docs: 'https://apisearch.elixpo.com/docs',
+  docs: '/docs',
   pollinations: 'https://pollinations.ai',
   github: 'https://github.com/pollinations/lixsearch',
 };
@@ -196,7 +196,7 @@ export default function LandingPage() {
               <span className="ml-2 text-xs text-white/30 font-mono">curl</span>
             </div>
             <pre className="p-5 text-sm font-mono text-white/60 overflow-x-auto leading-relaxed">
-              <code>{`curl -X POST https://apisearch.elixpo.com/api/search \\
+              <code>{`curl -X POST https://search.elixpo.com/api/search \\
   -H "Content-Type: application/json" \\
   -d '{"query": "how does RLHF work?", "stream": true}'`}</code>
             </pre>

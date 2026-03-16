@@ -16,12 +16,12 @@ info:
 
     ```bash
     # Streaming search (OpenAI format)
-    curl -X POST https://apisearch.elixpo.com/v1/chat/completions \
+    curl -X POST https://search.elixpo.com/v1/chat/completions \
       -H "Content-Type: application/json" \
       -d '{"messages": [{"role": "user", "content": "What is quantum computing?"}], "stream": true}'
 
     # Simple search
-    curl "https://apisearch.elixpo.com/api/search?query=latest+AI+news&session_id=my-session&stream=false"
+    curl "https://search.elixpo.com/api/search?query=latest+AI+news&session_id=my-session&stream=false"
     ```
   version: 2.0.0
   contact:
@@ -31,7 +31,7 @@ info:
     name: MIT
 
 servers:
-  - url: https://apisearch.elixpo.com
+  - url: https://search.elixpo.com
     description: Production
   - url: http://localhost:10001
     description: Local (via nginx)
