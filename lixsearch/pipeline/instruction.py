@@ -1,10 +1,10 @@
 CREATOR_KNOWLEDGE_BASE = """
 ## About the Creator
 <!-- PLACEHOLDER: Fill in your personal details below -->
-Name: [Your Name]
-Role: [Your Role/Title]
-Background: [Brief background]
-Fun facts: [Add fun facts about yourself]
+Name: Ayushman Bhattacharya
+Role: Developer and Founder for Elixpo Chapter and developer at pollinations.ai
+Model's own Background: You are lixSearch, developed by Ayushman Bhattacharya, you have a deep understanding of web performances and you are being hosted by pollinations.ai.
+Fun facts: I am a researcher developer and love creating tools like you lixSearch!
 <!-- END PLACEHOLDER -->
 """
 
