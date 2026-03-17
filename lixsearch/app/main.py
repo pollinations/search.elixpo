@@ -133,11 +133,6 @@ class lixSearch:
         self.app.route('/v1/models', methods=['GET'])(models_list)
         self.app.route('/api/session/create', methods=['POST'])(session.create_session)
         self.app.route('/api/session/<session_id>', methods=['GET'])(session.get_session_info)
-        self.app.route('/api/session/<session_id>/kg', methods=['GET'])(session.get_session_kg)
-        self.app.route('/api/session/<session_id>/query', methods=['POST'])(session.query_session_kg)
-        self.app.route('/api/session/<session_id>/entity/<entity>', methods=['GET'])(
-            session.get_entity_evidence
-        )
         self.app.route('/api/session/<session_id>/summary', methods=['GET'])(session.get_session_summary)
         self.app.route('/api/session/<session_id>', methods=['DELETE'])(session.delete_session)
         self.app.route('/api/chat', methods=['POST'])(chat_wrapper)

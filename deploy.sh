@@ -23,8 +23,8 @@ COMPOSE_FILE="docker-compose.yml"
 
 # Only validate container count for commands that use it
 case "${1:-help}" in
-    start|scale)
-        CONTAINER_COUNT=${2:-1}
+    start|scale|stary|quick)
+        CONTAINER_COUNT=${2:-3}
         if ! [[ "$CONTAINER_COUNT" =~ ^[0-9]+$ ]]; then
             echo -e "${RED}✗${NC} Container count must be a number"
             exit 1
@@ -257,7 +257,9 @@ ${YELLOW}Usage:${NC}
 
 ${YELLOW}Commands:${NC}
   build [no-cache]  Build image (add 'no-cache' for --no-cache flag)
-  start [N]         Start services (N containers, default 1)
+  stary [N]         Build with cache + start (default 3 containers)
+  quick [N]         Rebuild app only + rolling restart (fastest for code changes)
+  start [N]         Start services (N containers, default 3)
   scale N           Scale to N containers
   stop              Stop all services
   restart           Restart all services
@@ -300,6 +302,22 @@ case "${1:-help}" in
         ;;
     start)
         start_services "$CONTAINER_COUNT"
+        ;;
+    stary)
+        info "Build + start with ${CONTAINER_COUNT} containers..."
+        build_image "false"
+        start_services "$CONTAINER_COUNT"
+        ;;
+    quick)
+        info "Quick restart — rebuild app image only, rolling restart..."
+        check_env
+        check_docker
+        docker compose -f "$COMPOSE_FILE" build lixsearch-app
+        docker compose -f "$COMPOSE_FILE" up -d --no-deps --scale lixsearch-app="${CONTAINER_COUNT}" lixsearch-app
+        info "Waiting for health..."
+        sleep 30
+        success "App containers restarted (${CONTAINER_COUNT} replicas)"
+        show_status
         ;;
     scale)
         if [ -z "$2" ]; then
