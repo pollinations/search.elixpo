@@ -258,7 +258,8 @@ ${YELLOW}Usage:${NC}
 ${YELLOW}Commands:${NC}
   build [no-cache]  Build image (add 'no-cache' for --no-cache flag)
   stary [N]         Build with cache + start (default 3 containers)
-  quick [N]         Rebuild app only + rolling restart (fastest for code changes)
+  quick [N]         Rebuild app only + rolling restart (infra/dep changes)
+  hotfix            Copy code into running containers + restart (fastest, code-only)
   start [N]         Start services (N containers, default 3)
   scale N           Scale to N containers
   stop              Stop all services
@@ -317,6 +318,35 @@ case "${1:-help}" in
         info "Waiting for health..."
         sleep 30
         success "App containers restarted (${CONTAINER_COUNT} replicas)"
+        show_status
+        ;;
+    hotfix)
+        info "Hotfix — copying code into running containers (no rebuild)..."
+        check_docker
+        containers=$(docker compose -f "$COMPOSE_FILE" ps -q lixsearch-app 2>/dev/null)
+        if [ -z "$containers" ]; then
+            error "No running app containers found"
+            exit 1
+        fi
+        count=0
+        for cid in $containers; do
+            cname=$(docker inspect --format '{{.Name}}' "$cid" | sed 's|^/||')
+            docker cp lixsearch/. "$cid":/app/lixsearch/
+            docker cp openapi.yaml "$cid":/app/openapi.yaml
+            docker cp public/. "$cid":/app/public/
+            info "  Updated $cname"
+            count=$((count + 1))
+        done
+        # Also update ipc-service if running
+        ipc_cid=$(docker compose -f "$COMPOSE_FILE" ps -q ipc-service 2>/dev/null)
+        if [ -n "$ipc_cid" ]; then
+            docker cp lixsearch/. "$ipc_cid":/app/lixsearch/
+            info "  Updated ipc-service"
+        fi
+        info "Restarting $count app container(s)..."
+        docker compose -f "$COMPOSE_FILE" restart lixsearch-app
+        sleep 15
+        success "Hotfix applied to $count container(s)"
         show_status
         ;;
     scale)
