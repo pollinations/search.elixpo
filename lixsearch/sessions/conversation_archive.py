@@ -38,7 +38,7 @@ class ConversationArchive:
     - One file per session: simple sequential read/write, no index needed
     - Huffman over gzip/lz4: fastest for structured JSON (text-heavy)
     - Lazy embedding: embeddings computed on-demand during retrieval
-    - 30-day TTL: enforced on startup and periodically
+    - 14-day TTL (configurable): enforced on startup and periodically
     """
 
     def __init__(self, archive_dir: str, session_ttl_days: int = 30):

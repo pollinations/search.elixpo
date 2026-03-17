@@ -9,8 +9,8 @@ Key behaviours:
 - get_context()   → return hot window (recent); optionally enrich from disk
 - get_full()      → load everything from disk (returns all turns)
 - smart_context() → recent from Redis + semantic search from disk when needed
-- LRU eviction    → background thread migrates inactive sessions to disk after T minutes
-- TTL cleanup     → sessions on disk are removed after 30 days (checked on startup)
+- LRU eviction    → background thread migrates inactive sessions to disk after 2h idle
+- TTL cleanup     → sessions on disk are removed after 14 days inactive (checked on startup)
 
 Design for throughput:
 - Redis operations: O(1) with pipeline where possible
@@ -299,22 +299,26 @@ class HybridConversationCache:
 
     def get_context(self) -> List[Dict]:
         """Return recent messages from Redis hot window (chronological order).
-        Falls back to disk if Redis is empty (e.g. after LRU eviction)."""
+        Falls back to full disk archive if Redis is empty (e.g. after LRU eviction),
+        so the caller's token-budget trimmer can decide how much history to use."""
         _update_last_activity(self.session_id)
         if self._redis:
             messages = self._get_from_redis()
             if messages:
+                # Refresh TTL on access so active sessions never expire
+                self._refresh_redis_ttl()
                 return messages
             # Redis available but empty — session may have been evicted to disk
-            disk_messages = self.archive.load_recent(self.session_id, self.hot_window_size)
+            # Return ALL disk messages (not capped) so pipeline token-budget trimmer works
+            disk_messages = self.archive.load_all(self.session_id) or []
             if disk_messages:
                 logger.info(
                     f"[HybridCache] session={self.session_id} Redis empty, "
                     f"recovered {len(disk_messages)} messages from disk"
                 )
             return disk_messages
-        # Redis unavailable — disk-only fallback
-        return self.archive.load_recent(self.session_id, self.hot_window_size)
+        # Redis unavailable — disk-only fallback (full archive)
+        return self.archive.load_all(self.session_id) or []
 
     def _get_from_redis(self) -> List[Dict]:
         """Read hot window from Redis."""
@@ -337,6 +341,23 @@ class HybridConversationCache:
                 f"[HybridCache] session={self.session_id} _get_from_redis failed: {e}"
             )
             return []
+
+    def _refresh_redis_ttl(self) -> None:
+        """Refresh TTL on all Redis keys for this session so active sessions never expire."""
+        try:
+            ctx_key = self._ctx_key
+            order_key = self._order_key
+            msg_ids = self._redis.lrange(order_key, 0, -1)
+            if not msg_ids:
+                return
+            pipe = self._redis.pipeline()
+            pipe.expire(order_key, self.redis_ttl)
+            for msg_id in msg_ids:
+                mid = msg_id.decode() if isinstance(msg_id, bytes) else msg_id
+                pipe.expire(f"{ctx_key}:{mid}", self.redis_ttl)
+            pipe.execute()
+        except Exception as e:
+            logger.debug(f"[HybridCache] session={self.session_id} TTL refresh failed: {e}")
 
     def get_full(self) -> List[Dict]:
         """
