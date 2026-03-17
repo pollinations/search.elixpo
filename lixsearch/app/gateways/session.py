@@ -44,17 +44,29 @@ async def get_session_info(session_id: str):
         session_manager = get_session_manager()
         session_data = session_manager.get_session(session_id)
 
-        if not session_data:
-            logger.warning(f"[{request_id}] session={session_id} not found")
-            return jsonify({"error": "Session not found"}), 404
+        if session_data:
+            return jsonify({
+                "session_id": session_id,
+                "query": session_data.query,
+                "summary": session_manager.get_session_summary(session_id),
+                "request_id": request_id,
+                "timestamp": datetime.utcnow().isoformat()
+            })
 
-        return jsonify({
-            "session_id": session_id,
-            "query": session_data.query,
-            "summary": session_manager.get_session_summary(session_id),
-            "request_id": request_id,
-            "timestamp": datetime.utcnow().isoformat()
-        })
+        # Session not in memory — try disk archive (evicted sessions)
+        disk_data = session_manager.get_session_from_disk(session_id)
+        if disk_data:
+            logger.info(f"[{request_id}] session={session_id} recovered from disk archive")
+            return jsonify({
+                "session_id": session_id,
+                "summary": disk_data,
+                "source": "disk_archive",
+                "request_id": request_id,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+        logger.warning(f"[{request_id}] session={session_id} not found")
+        return jsonify({"error": "Session not found"}), 404
 
     except Exception as e:
         logger.error(f"[{request_id}] get_session_info session={session_id} error: {e}", exc_info=True)
@@ -71,14 +83,25 @@ async def get_session_summary(session_id: str):
         logger.info(f"[{request_id}] Getting summary for session: {session_id}")
         session_manager = get_session_manager()
         session_data = session_manager.get_session(session_id)
-        if not session_data:
-            return jsonify({"error": "Session not found"}), 404
 
-        return jsonify({
-            "session_id": session_id,
-            "summary": session_manager.get_session_summary(session_id),
-            "request_id": request_id
-        })
+        if session_data:
+            return jsonify({
+                "session_id": session_id,
+                "summary": session_manager.get_session_summary(session_id),
+                "request_id": request_id
+            })
+
+        # Fallback to disk archive
+        disk_data = session_manager.get_session_from_disk(session_id)
+        if disk_data:
+            return jsonify({
+                "session_id": session_id,
+                "summary": disk_data,
+                "source": "disk_archive",
+                "request_id": request_id
+            })
+
+        return jsonify({"error": "Session not found"}), 404
 
     except Exception as e:
         logger.error(f"[{request_id}] Summary error: {e}", exc_info=True)

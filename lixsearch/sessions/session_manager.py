@@ -109,12 +109,30 @@ class SessionManager:
                         "query": s.query[:LOG_MESSAGE_QUERY_TRUNCATE],
                         "urls_fetched": len(s.fetched_urls),
                         "tools_used": len(s.tool_calls_made),
-                        "faiss_index_size": s.faiss_index.ntotal,
+                        "document_count": len(s.processed_content),
                     }
                     for sid, s in self.sessions.items()
                 }
             }
-    
+
+    def get_session_from_disk(self, session_id: str) -> Optional[Dict]:
+        """Load session conversation data from disk archive (for evicted sessions)."""
+        try:
+            from sessions.hybrid_conversation_cache import HybridConversationCache
+            cache = HybridConversationCache(session_id)
+            messages = cache.get_full()
+            if messages:
+                return {
+                    "session_id": session_id,
+                    "messages": messages,
+                    "source": "disk_archive",
+                    "conversation_turns": len(messages),
+                }
+            return None
+        except Exception as e:
+            logger.warning(f"[SessionManager] Disk fallback for session={session_id} failed: {e}")
+            return None
+
     def add_message_to_history(self, session_id: str, role: str, content: str, metadata: Dict = None):
         with self.lock:
             session = self.sessions.get(session_id)
