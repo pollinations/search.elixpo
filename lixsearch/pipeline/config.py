@@ -68,13 +68,9 @@ LEAKED_TOOL_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Matches hallucinated XML tool call blocks the model sometimes emits
-LEAKED_XML_RE = re.compile(
-    r"<function_calls>[\s\S]*?</function_calls>"
-    r"|<invoke\b[^>]*>[\s\S]*?</invoke>"
-    r"|<parameter\b[^>]*>[\s\S]*?</parameter>"
-    r"|</?function_calls>"
-    r"|</?invoke(?:\s[^>]*)?>",
+# Matches hallucinated XML tags the model sometimes emits (structure only, not content)
+LEAKED_XML_TAG_RE = re.compile(
+    r"</?(?:function_calls|invoke|parameter)\b[^>]*>",
     re.IGNORECASE,
 )
 
