@@ -81,14 +81,32 @@ All information is gathered. Produce the response now. Markdown. Cite as [Title]
 
 
 def deep_search_gating_instruction(query):
-    return f"""Is this query simple or complex?
+    return f"""Decide whether this query needs deep multi-step research or a standard quick search.
 
 Query: "{query}"
 
-Return ONLY JSON: {{"needs_deep_search": true/false, "reason": "brief"}}
+Return ONLY JSON: {{"needs_deep_search": true/false, "reason": "brief explanation"}}
 
-false: quick facts, single lookups, simple how-to, <10 words with single intent
-true: multi-faceted research, comparisons, multiple sub-questions, analysis from different angles"""
+**needs_deep_search = false** (standard search is enough):
+- Quick factual lookups: "What is the capital of France?", "How tall is the Eiffel Tower?"
+- Simple definitions or explanations: "What is photosynthesis?"
+- Single-topic how-to: "How do I reset my iPhone?"
+- Current info with one angle: "Latest Bitcoin price", "Weather in Tokyo"
+- Conversational follow-ups: "Tell me more", "What about X?"
+- Time/date queries, unit conversions, calculations
+- Single-entity lookups: a person's bio, a company's stock price
+
+**needs_deep_search = true** (deep research required):
+- The user explicitly asks for research, deep dive, comprehensive analysis, detailed comparison, or thorough investigation
+- Multi-faceted questions that need exploration from multiple angles: "What are the pros and cons of remote work on productivity, mental health, and career growth?"
+- Comparative analysis: "Compare React, Vue, and Angular for enterprise applications"
+- Questions requiring synthesis across multiple domains or sources: "How is AI impacting healthcare, education, and finance?"
+- Open-ended research topics: "What are the emerging trends in renewable energy?"
+- Questions with implicit depth: "Should I use Rust or Go for my next systems project?" (needs benchmarks, ecosystem, learning curve, use cases)
+- Investigative queries: "Why did Silicon Valley Bank collapse?", "What caused the 2024 CrowdStrike outage?"
+- Strategy/planning questions: "How should a startup approach Series A fundraising?"
+
+When in doubt, lean toward false — deep search costs more time and simple queries should be fast."""
 
 
 def deep_search_sub_query_instruction(sub_query, original_query, sub_query_index, total_sub_queries):
