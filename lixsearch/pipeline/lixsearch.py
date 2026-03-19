@@ -267,7 +267,12 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     timeout=3.0
                 )
                 if retrieval_result.get("count", 0) > 0:
-                    rag_context = "\n".join([r["metadata"]["text"] for r in retrieval_result.get("results", [])])
+                    _rag_chunks = [r["metadata"]["text"] for r in retrieval_result.get("results", [])]
+                    rag_context = "\n".join(_rag_chunks)
+                    # Cap RAG context to avoid overwhelming the model on follow-up queries
+                    if len(rag_context) > 8000:
+                        rag_context = rag_context[:8000]
+                        logger.info(f"[Pipeline] RAG context capped at 8000 chars (was {sum(len(c) for c in _rag_chunks)})")
                     _rag_count = retrieval_result.get("count", 0)
                     logger.info(f"[Pipeline] Retrieved {_rag_count} chunks from vector store")
                     rag_event = emit_event("INFO", f"<TASK>Recalling {_rag_count} related snippet{'s' if _rag_count != 1 else ''} from memory</TASK>")
