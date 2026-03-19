@@ -35,6 +35,19 @@ POLLINATIONS_TOKEN = os.getenv("TOKEN")
 import re as _re
 
 # Patterns that indicate the model is reasoning/thinking instead of writing user-facing content
+_AD_URL_PATTERNS = ("doubleclick.net", "clickserve.", "dartsearch.net", "googleads.",
+                    "googlesyndication", "facebook.com/tr", "bing.com/aclick",
+                    "ads.", "redirect.", "track.", "ad.doubleclick")
+
+
+def _is_clean_url(url: str) -> bool:
+    """Return True if the URL is a real source, not an ad/tracking redirect."""
+    if not url or len(url) > 300:
+        return False
+    lower = url.lower()
+    return not any(ad in lower for ad in _AD_URL_PATTERNS)
+
+
 _REASONING_PATTERNS = _re.compile(
     r"^(?:"
     r"(?:The user|I (?:need|should|will|have to|must|can see|see|notice|want))|"
@@ -270,7 +283,9 @@ async def _execute_deep_search_sub_query(
             for r in ws_results:
                 if not isinstance(r, Exception):
                     if "current_search_urls" in memoized_results:
-                        collected_sources.extend(memoized_results["current_search_urls"][:3])
+                        collected_sources.extend(
+                            u for u in memoized_results["current_search_urls"][:3] if _is_clean_url(u)
+                        )
                     tool_outputs.append({
                         "role": "tool",
                         "tool_call_id": r["tool_call_id"],
@@ -328,7 +343,7 @@ async def _execute_deep_search_sub_query(
                 if isinstance(fr, Exception):
                     continue
                 url = fr.get("url", "")
-                if url and len(collected_sources) < 6:
+                if _is_clean_url(url) and len(collected_sources) < 6:
                     collected_sources.append(url)
                 tool_outputs.append({
                     "role": "tool",
@@ -643,9 +658,11 @@ async def _run_deep_search_pipeline(
             if timeout_event:
                 yield timeout_event
 
-    # Append sources regardless of synthesis success (sub-results already streamed)
-    if all_collected_sources:
-        unique_sources = sorted(set(all_collected_sources))[:8]
+    # ── Clean sources: filter out ad tracking / redirect URLs ──
+    unique_sources = sorted(set(s for s in all_collected_sources if _is_clean_url(s)))[:8]
+
+    # Append sources
+    if unique_sources:
         source_block = "\n\n---\n**Sources:**\n"
         for i, src in enumerate(unique_sources, 1):
             source_block += f"{i}. [{src}]({src})\n"
@@ -654,39 +671,47 @@ async def _run_deep_search_pipeline(
         else:
             yield source_block
 
+    # ── Final synthesis (only if >1 sub-result, skip if content is already rich) ──
+    # Sub-results are already streamed to the user. Synthesis is a bonus summary
+    # that ties them together — NOT required. If it fails, user still has full content.
     if len(all_sub_results) > 1:
-        synth_event = emit_event("INFO", "<TASK>Combining all research into final answer</TASK>")
-        if synth_event:
-            yield synth_event
+        # Only attempt synthesis if total content isn't already too large
+        _total_chars = sum(len(r[1]) for r in all_sub_results)
+        if _total_chars > 15000:
+            # Content is already very comprehensive — skip synthesis to avoid timeout
+            logger.info(f"[DeepSearch] Skipping synthesis — {_total_chars} chars already delivered")
+        else:
+            synth_event = emit_event("INFO", "<TASK>Combining all research into final answer</TASK>")
+            if synth_event:
+                yield synth_event
 
-        try:
-            final_response = await _deep_search_final_synthesis(
-                original_query=user_query,
-                sub_results=all_sub_results,
-                headers=headers,
-            )
+            try:
+                final_response = await _deep_search_final_synthesis(
+                    original_query=user_query,
+                    sub_results=all_sub_results,
+                    headers=headers,
+                )
 
-            if final_response:
-                final_response = _scrub_tool_names(final_response)
+                if final_response:
+                    final_response = _scrub_tool_names(final_response)
 
-                if event_id:
-                    yield format_sse("RESPONSE", final_response)
+                    if event_id:
+                        yield format_sse("RESPONSE", final_response)
+                    else:
+                        yield final_response
                 else:
-                    yield final_response
-            else:
-                # Synthesis returned empty — sub-results + sources already streamed, just log
-                logger.info("[DeepSearch] Synthesis empty — sub-results already delivered to user")
+                    logger.info("[DeepSearch] Synthesis empty — sub-results already delivered")
 
-        except Exception as e:
-            logger.error(f"[DeepSearch] Final synthesis failed: {e}", exc_info=True)
-            # Not fatal — sub-results already streamed to user
+            except Exception as e:
+                logger.error(f"[DeepSearch] Final synthesis failed: {e}", exc_info=True)
 
+    # ── Save to caches (fire-and-forget, never block DONE) ──
     combined_content = "\n\n".join(r[1] for r in all_sub_results) if all_sub_results else None
-    if combined_content:
-        memoized_results["final_response"] = combined_content
-        try:
+    try:
+        if combined_content:
+            memoized_results["final_response"] = combined_content
             cache_metadata = {
-                "sources": all_collected_sources[:8],
+                "sources": unique_sources,
                 "deep_search": True,
                 "sub_queries": len(all_sub_results),
             }
@@ -702,33 +727,27 @@ async def _run_deep_search_pipeline(
                 metadata=cache_metadata,
                 query_embedding=_cache_embedding,
             )
-        except Exception as e:
-            logger.warning(f"[DeepSearch] Cache save failed: {e}")
 
-        if session_context:
-            try:
+            if session_context:
                 session_context.add_message(role="assistant", content=combined_content)
                 memoized_results["_assistant_response_saved"] = True
-            except Exception as e:
-                logger.warning(f"[DeepSearch] Session context save failed: {e}")
+    except Exception as e:
+        logger.warning(f"[DeepSearch] Cache save failed: {e}")
 
-    if session_id and semantic_cache is not None:
-        try:
+    try:
+        if session_id and semantic_cache is not None:
             semantic_cache.save_for_request(session_id)
-        except Exception:
-            pass
-
-    if session_id:
-        try:
+        if session_id:
             conversation_cache.save_to_disk(session_id=session_id)
-        except Exception:
-            pass
+    except Exception:
+        pass
 
+    # ── DONE — always fire, never skip ──
     done_event = emit_event("INFO", "<TASK>DONE</TASK>")
     if done_event:
         yield done_event
 
     logger.info(
         f"[DeepSearch] Complete: {len(all_sub_results)} sub-queries answered, "
-        f"{len(all_collected_sources)} total sources"
+        f"{len(unique_sources)} clean sources"
     )
