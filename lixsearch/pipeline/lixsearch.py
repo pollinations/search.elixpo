@@ -656,17 +656,19 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 if better:
                     final_message_content = better
 
-            # Auto-generate PDF
-            try:
-                pdf_url = await auto_generate_pdf(final_message_content, _query_lower, memoized_results, event_id)
-                if pdf_url:
+            _wants_pdf = any(kw in _query_lower for kw in ("pdf", "export", "save as", "document"))
+            _already_has_pdf = bool(memoized_results.get("generated_pdfs"))
+            if _wants_pdf and not _already_has_pdf and final_message_content and len(final_message_content) > 100:
+                try:
                     if event_id:
                         yield format_sse("INFO", "<TASK>Generating PDF document</TASK>")
-                    final_message_content += f"\n\n---\n\n[Download PDF]({pdf_url})"
-                    if event_id:
-                        yield format_sse("INFO", "<TASK>PDF ready for download</TASK>")
-            except Exception as e:
-                logger.error(f"[FINAL] Auto PDF generation failed: {e}")
+                    pdf_url = await auto_generate_pdf(final_message_content, _query_lower, memoized_results, event_id)
+                    if pdf_url:
+                        final_message_content += f"\n\n---\n\n[Download PDF]({pdf_url})"
+                        if event_id:
+                            yield format_sse("INFO", "<TASK>PDF ready for download</TASK>")
+                except Exception as e:
+                    logger.error(f"[FINAL] Auto PDF generation failed: {e}")
 
             # Assemble images and sources
             response_parts = assemble_images(final_message_content, collected_images_from_web,
