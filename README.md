@@ -46,7 +46,7 @@
 
 ---
 
-## ⚙️ How It Works (In Plain English)
+## ⚙️ How It Works
 
 When you ask lixSearch a question, here's what happens behind the scenes:
 
@@ -80,7 +80,7 @@ When you ask lixSearch a question, here's what happens behind the scenes:
 
 ---
 
-## 🛠️ How The System Works (The Simple Version)
+## 🛠️ How The System Design HLD
 
 ```mermaid
 flowchart TD
@@ -177,16 +177,6 @@ curl -X POST https://search.elixpo.com/v1/chat/completions \
 ```
 Returns a standard `chat.completion` object with `usage` (prompt/completion tokens) and `choices[0].message.content`.
 
-### Deep search
-```bash
-curl -X POST https://search.elixpo.com/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [{"role": "user", "content": "Compare transformer architectures for long-context reasoning"}],
-    "stream": true,
-    "deep_search": true
-  }'
-```
 
 ### Available endpoints
 
