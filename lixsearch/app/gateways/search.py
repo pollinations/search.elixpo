@@ -48,14 +48,14 @@ async def search(pipeline_initialized: bool):
             query = request.args.get("query", "").strip()
             image_url = request.args.get("image_url") or request.args.get("image")
             images_param = request.args.getlist("images")
-            stream_param = request.args.get("stream", "true").lower()
+            stream_param = request.args.get("stream", "false").lower()
         else:
             data = await request.get_json()
             session_id = data.get("session_id", "").strip()
             query = data.get("query", "").strip()
             image_url = data.get("image_url") or data.get("image")
             images_param = data.get("images", [])
-            stream_param = str(data.get("stream", "true")).lower()
+            stream_param = str(data.get("stream", "false")).lower()
 
         # Normalize images: support both single `image` and `images` array (max 3)
         image_urls = []
