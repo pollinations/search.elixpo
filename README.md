@@ -4,6 +4,7 @@
 
 **Intelligent search assistant with real-time web research, RAG, and OpenAI-compatible API**
 
+[![GitHub license](https://img.shields.io/badge/Built%20with-Pollinations-8a2be2?style=for-the-badge)]
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
