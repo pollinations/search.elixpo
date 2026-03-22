@@ -12,8 +12,8 @@ payload = {
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": "can you tell me a cool temple there"},
-                
+                {"type": "text", "text": "I found this temple while browsing — can you identify it and tell me the best time to visit? Also search for any current visitor restrictions or ticket prices in 2026"},
+                {"type": "image_url", "image_url": {"url": "https://upload.wikimedia.org/wikipedia/commons/3/3c/Kiyomizu.jpg"}}
             ]
         }
     ],
