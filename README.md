@@ -136,7 +136,7 @@ lixSearch exposes an **OpenAI-compatible** API. Any client that works with OpenA
 
 ### Basic search
 ```bash
-curl -X POST https://apisearch.elixpo.com/v1/chat/completions \
+curl -X POST https://search.elixpo.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "What is the best way to learn Python?"}],
@@ -146,7 +146,7 @@ curl -X POST https://apisearch.elixpo.com/v1/chat/completions \
 
 ### Multi-turn conversation
 ```bash
-curl -X POST https://apisearch.elixpo.com/v1/chat/completions \
+curl -X POST https://search.elixpo.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -161,7 +161,7 @@ The full conversation history is injected into the model context — no session 
 
 ### Non-streaming (JSON response)
 ```bash
-curl -X POST https://apisearch.elixpo.com/v1/chat/completions \
+curl -X POST https://search.elixpo.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "Latest breakthroughs in AI"}],
@@ -172,7 +172,7 @@ Returns a standard `chat.completion` object with `usage` (prompt/completion toke
 
 ### Deep search
 ```bash
-curl -X POST https://apisearch.elixpo.com/v1/chat/completions \
+curl -X POST https://search.elixpo.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "Compare transformer architectures for long-context reasoning"}],
@@ -245,11 +245,11 @@ Each will give you a complete, sourced answer.
 > This is the flow of the request that we have from the CF Reverse proxy 
 
 ```
-Browser → apisearch.elixpo.com (Cloudflare Pages, edge)
+Browser → search.elixpo.com (Cloudflare Pages, edge)
            ↓
          Next.js API route (e.g. /api/search/route.ts)
            ↓
-         backendUrl("/api/search") → "http://apisearch.elixpo.com/api/search"
+         backendUrl("/api/search") → "http://search.elixpo.com/api/search"
            ↓
          fetch() with headers:
            X-API-Key: <API_KEY secret>           ← nginx auth on :10001
