@@ -56,42 +56,38 @@ async def run_standard_synthesis(messages, user_query, active_max_tokens, header
         "tool_choice": "none",
     }
 
-    for _attempt in range(1, 3):
+    try:
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                requests.post, POLLINATIONS_ENDPOINT,
+                json=payload, headers=headers, timeout=45
+            ),
+            timeout=50.0
+        )
+        response.raise_for_status()
+        response_data = response.json()
         try:
-            response = await asyncio.wait_for(
-                asyncio.to_thread(
-                    requests.post, POLLINATIONS_ENDPOINT,
-                    json=payload, headers=headers, timeout=45
-                ),
-                timeout=50.0
-            )
-            response.raise_for_status()
-            response_data = response.json()
-            try:
-                message = response_data["choices"][0]["message"]
-                message.pop("reasoning_content", None)
-                content = message.get("content", "").strip()
+            message = response_data["choices"][0]["message"]
+            message.pop("reasoning_content", None)
+            content = message.get("content", "").strip()
 
-                if content and "<|tool_call" in content:
-                    content = _scrub_tool_names(content)
+            if content and "<|tool_call" in content:
+                content = _scrub_tool_names(content)
 
-                if content:
-                    logger.info(f"[SYNTHESIS] Content extracted: {len(content)} chars")
-                else:
-                    logger.error(f"[SYNTHESIS] API returned empty content")
-                return content
-            except (KeyError, IndexError, TypeError) as e:
-                logger.error(f"[SYNTHESIS] Failed to extract content: {e}")
-                return None
-        except asyncio.TimeoutError:
-            logger.error(f"[SYNTHESIS TIMEOUT] attempt {_attempt}")
-        except requests.exceptions.HTTPError as http_err:
-            logger.error(f"[SYNTHESIS HTTP ERROR] attempt {_attempt}: {str(http_err)[:ERROR_MESSAGE_TRUNCATE]}")
-        except Exception as e:
-            logger.error(f"[SYNTHESIS ERROR] attempt {_attempt}: {str(e)[:ERROR_MESSAGE_TRUNCATE]}")
-
-        if _attempt < 2:
-            await asyncio.sleep(1.5)
+            if content:
+                logger.info(f"[SYNTHESIS] Content extracted: {len(content)} chars")
+            else:
+                logger.error(f"[SYNTHESIS] API returned empty content")
+            return content
+        except (KeyError, IndexError, TypeError) as e:
+            logger.error(f"[SYNTHESIS] Failed to extract content: {e}")
+            return None
+    except asyncio.TimeoutError:
+        logger.error("[SYNTHESIS TIMEOUT]")
+    except requests.exceptions.HTTPError as http_err:
+        logger.error(f"[SYNTHESIS HTTP ERROR]: {str(http_err)[:ERROR_MESSAGE_TRUNCATE]}")
+    except Exception as e:
+        logger.error(f"[SYNTHESIS ERROR]: {str(e)[:ERROR_MESSAGE_TRUNCATE]}")
 
     return None
 

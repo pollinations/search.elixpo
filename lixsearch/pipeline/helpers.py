@@ -249,9 +249,9 @@ async def sanitize_final_response(content: str, query: str, sources: list[str], 
                 POLLINATIONS_ENDPOINT,
                 json=payload,
                 headers=headers,
-                timeout=20
+                timeout=10
             ),
-            timeout=22.0
+            timeout=12.0
         )
         response.raise_for_status()
         response_data = response.json()
@@ -350,9 +350,9 @@ async def _decompose_query_with_llm(query: str, headers: dict, max_parts: int = 
                 POLLINATIONS_ENDPOINT,
                 json=payload,
                 headers=headers,
-                timeout=20
+                timeout=12
             ),
-            timeout=float(TOPIC_DECOMPOSITION_TIMEOUT)
+            timeout=15.0
         )
         response.raise_for_status()
         data = response.json()
@@ -437,9 +437,9 @@ async def _synthesize_subtopic(
             POLLINATIONS_ENDPOINT,
             json=payload,
             headers=headers,
-            timeout=20
+            timeout=15
         ),
-        timeout=22.0
+        timeout=18.0
     )
     response.raise_for_status()
     data = response.json()

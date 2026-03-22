@@ -134,7 +134,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         )
         memoized_results["conversation_cache"] = conversation_cache
 
-        if session_id:
+        if session_id and not is_ephemeral:
             conversation_cache.load_from_disk(session_id=session_id)
 
         # --- Semantic cache ---
@@ -146,7 +146,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             redis_port=SEMANTIC_CACHE_REDIS_PORT,
             redis_db=SEMANTIC_CACHE_REDIS_DB
         )
-        if session_id:
+        if session_id and not is_ephemeral:
             semantic_cache.load_for_request(session_id)
 
         # --- Image handling ---
@@ -223,7 +223,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             try:
                 active_top_k = RETRIEVAL_TOP_K * 2 if is_detailed_mode else RETRIEVAL_TOP_K
                 retrieval_result = await asyncio.wait_for(
-                    asyncio.to_thread(core_service.retrieve, user_query, active_top_k), timeout=3.0
+                    asyncio.to_thread(core_service.retrieve, user_query, active_top_k), timeout=2.0
                 )
                 if retrieval_result.get("count", 0) > 0:
                     _rag_chunks = [r["metadata"]["text"] for r in retrieval_result.get("results", [])]
@@ -593,15 +593,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     tool_outputs.append({"role": "tool", "tool_call_id": fr["tool_call_id"], "name": "fetch_full_text",
                                          "content": str(fr["result"])[:500] if fr["result"] else "No result"})
 
+                # Fire-and-forget: ingest into vector store without blocking the response
                 if ingest_tasks:
-                    try:
-                        ingest_results = await asyncio.wait_for(asyncio.gather(*ingest_tasks, return_exceptions=True), timeout=5.0)
-                        _ingested = sum(1 for r in ingest_results if not isinstance(r, Exception))
-                        if event_id and _ingested > 0:
-                            yield format_sse("INFO", f"<TASK>Memorizing {_ingested} source{'s' if _ingested != 1 else ''}</TASK>")
-                            status_tracker.touch()
-                    except asyncio.TimeoutError:
-                        pass
+                    asyncio.gather(*ingest_tasks, return_exceptions=True)
 
                 good, total = _evaluate_fetch_quality(tool_outputs)
                 if total > 0 and event_id and good > 0:
@@ -618,7 +612,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 yield format_sse("INFO", get_user_message("synthesizing"))
                 status_tracker.touch()
 
-            rag_context = await re_retrieve_rag_context(user_query, rag_context)
+            # RAG context already retrieved at pipeline start — skip redundant re-retrieval
 
             if is_detailed_mode:
                 async for item in run_detailed_synthesis(
