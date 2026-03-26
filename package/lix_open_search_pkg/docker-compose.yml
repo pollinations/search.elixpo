@@ -58,8 +58,8 @@ services:
   # ── IPC Service (embeddings + Playwright search agents) ─
   ipc:
     build:
-      context: ..
-      dockerfile: package/Dockerfile
+      context: ../..
+      dockerfile: package/lix_open_search_pkg/Dockerfile
     container_name: lix-ipc
     environment:
       - APP_MODE=ipc
@@ -96,8 +96,8 @@ services:
   # ── App Workers (Quart API) ─────────────────────────────
   app:
     build:
-      context: ..
-      dockerfile: package/Dockerfile
+      context: ../..
+      dockerfile: package/lix_open_search_pkg/Dockerfile
     environment:
       - APP_MODE=worker
       - WORKER_PORT=9002

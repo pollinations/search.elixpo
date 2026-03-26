@@ -18,20 +18,13 @@ classifiers = [
 ]
 dependencies = [
     "httpx>=0.25",
-    "redis>=5.0",
-    "numpy>=1.24",
-    "loguru>=0.7",
 ]
-
-[project.optional-dependencies]
-lz4 = ["lz4>=4.0"]
 
 [project.urls]
 Homepage = "https://search.elixpo.com"
 Repository = "https://github.com/Circuit-Overtime/lixSearch"
-Documentation = "https://github.com/Circuit-Overtime/lixSearch/blob/main/package/README.md"
+Documentation = "https://github.com/Circuit-Overtime/lixSearch/blob/main/package/lix_open_search_pkg/README.md"
 "Docker Hub" = "https://hub.docker.com/r/elixpo/lixsearch"
-"Research Paper" = "https://github.com/Circuit-Overtime/lixSearch/blob/main/docs/paper/lix_cache_paper.pdf"
 
 [tool.setuptools.packages.find]
-include = ["lix_open_search*", "lix_open_cache*"]
+include = ["lix_open_search*"]
