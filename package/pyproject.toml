@@ -18,3 +18,7 @@ lz4 = ["lz4>=4.0"]
 
 [tool.setuptools.packages.find]
 include = ["lix_open_cache*"]
+
+[pypi]
+  username = __token__
+  password = pypi-AgEIcHlwaS5vcmcCJGRiYTQ4YjMzLTEwMGYtNDg0Zi1hNjg1LWU2MzUxMjMyODEyYgACKlszLCIzYmZhOGVkZS1kMjU3LTRjMTktYmIzMy1jOTQ5ZTZhN2FmMGYiXQAABiAg1KFG5Vf6frE0zVgQIgPWRTUU2LtVxQCzzOkT3e51fg
