@@ -32,6 +32,8 @@
 \newlabel{sec:implementation}{{IV}{4}{Implementation}{section.4}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Package Structure}{4}{subsection.4.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Huffman Codec}{4}{subsection.4.2}\protected@file@percent }
+\citation{openai_search_pricing}
+\citation{openai_search_billing}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-C}}Conversation Archive and .huff File Format}{5}{subsection.4.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-D}}Hybrid Conversation Cache}{5}{subsection.4.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-E}}Semantic Cache}{5}{subsection.4.5}\protected@file@percent }
@@ -40,26 +42,30 @@
 \@writefile{toc}{\contentsline {section}{\numberline {V}Evaluation}{5}{section.5}\protected@file@percent }
 \newlabel{sec:evaluation}{{V}{5}{Evaluation}{section.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-A}}Cost Comparison: SearchGPT vs.\ lixSearch}{5}{subsection.5.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-B}}Latency Profile}{5}{subsection.5.2}\protected@file@percent }
-\citation{langchain2023}
-\citation{llamaindex2023}
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Per-query cost comparison (log scale). SearchGPT API includes the hidden context token charge (${\sim }$8k tokens per search). lixSearch uses open models with Playwright-based search agents. The cached cost reflects the 89.3\% hit rate, where cache hits incur zero LLM cost.}}{6}{figure.2}\protected@file@percent }
-\newlabel{fig:cost}{{2}{6}{Per-query cost comparison (log scale). SearchGPT API includes the hidden context token charge (${\sim }$8k tokens per search). lixSearch uses open models with Playwright-based search agents. The cached cost reflects the 89.3\% hit rate, where cache hits incur zero LLM cost}{figure.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Per-query cost at different monthly volumes}}{6}{table.1}\protected@file@percent }
+\newlabel{tab:cost}{{I}{6}{Per-query cost at different monthly volumes}{table.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Per-query cost at 50k queries/month (log scale). SearchGPT charges per-query API fees (\$0.22). Our system has zero API fees---cost is amortized server infrastructure (\$96/mo). With 89\% cache hit rate, effective cost drops to \$0.0002/query---a 1{,}000$\times $ reduction.}}{6}{figure.2}\protected@file@percent }
+\newlabel{fig:cost}{{2}{6}{Per-query cost at 50k queries/month (log scale). SearchGPT charges per-query API fees (\$0.22). Our system has zero API fees---cost is amortized server infrastructure (\$96/mo). With 89\% cache hit rate, effective cost drops to \$0.0002/query---a 1{,}000$\times $ reduction}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-B}}Latency Profile}{6}{subsection.5.2}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Operation latencies in ms (log scale). Redis reads are two orders of magnitude faster than disk, confirming the hot-window design.}}{6}{figure.3}\protected@file@percent }
 \newlabel{fig:latency}{{3}{6}{Operation latencies in ms (log scale). Redis reads are two orders of magnitude faster than disk, confirming the hot-window design}{figure.3}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}Compression Efficiency}{6}{subsection.5.3}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Huffman compression ratios on production conversation archives}}{6}{table.1}\protected@file@percent }
-\newlabel{tab:compression}{{I}{6}{Huffman compression ratios on production conversation archives}{table.1}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Huffman compression ratio vs.\ payload size (synthetic conversation data)}}{6}{table.2}\protected@file@percent }
-\newlabel{tab:compression_scaling}{{II}{6}{Huffman compression ratio vs.\ payload size (synthetic conversation data)}{table.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-D}}Redis Memory Footprint}{6}{subsection.5.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-E}}Cache Hit Rate}{6}{subsection.5.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {VI}Related Work}{6}{section.6}\protected@file@percent }
-\newlabel{sec:related}{{VI}{6}{Related Work}{section.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Huffman compression ratios on production conversation archives}}{6}{table.2}\protected@file@percent }
+\newlabel{tab:compression}{{II}{6}{Huffman compression ratios on production conversation archives}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces Huffman compression ratio vs.\ payload size (synthetic conversation data)}}{6}{table.3}\protected@file@percent }
+\newlabel{tab:compression_scaling}{{III}{6}{Huffman compression ratio vs.\ payload size (synthetic conversation data)}{table.3}{}}
+\citation{langchain2023}
+\citation{llamaindex2023}
 \citation{gptcache2023}
 \citation{semantic_kernel2023}
 \citation{haystack2023}
 \citation{memgpt2023}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-D}}Redis Memory Footprint}{7}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-E}}Cache Hit Rate}{7}{subsection.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VI}Related Work}{7}{section.6}\protected@file@percent }
+\newlabel{sec:related}{{VI}{7}{Related Work}{section.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {VII}Conclusion}{7}{section.7}\protected@file@percent }
+\newlabel{sec:conclusion}{{VII}{7}{Conclusion}{section.7}{}}
 \bibcite{langchain2023}{1}
 \bibcite{gptcache2023}{2}
 \bibcite{llamaindex2023}{3}
@@ -70,7 +76,5 @@
 \bibcite{redis2023}{8}
 \bibcite{openai_search_pricing}{9}
 \bibcite{openai_search_billing}{10}
-\@writefile{toc}{\contentsline {section}{\numberline {VII}Conclusion}{7}{section.7}\protected@file@percent }
-\newlabel{sec:conclusion}{{VII}{7}{Conclusion}{section.7}{}}
-\@writefile{toc}{\contentsline {section}{References}{7}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{References}{8}{section*.1}\protected@file@percent }
 \gdef \@abspage@last{8}

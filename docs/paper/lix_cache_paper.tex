@@ -1,3 +1,7 @@
+% This paper is licensed under CC BY-NC-ND 4.0
+% (Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International)
+% https://creativecommons.org/licenses/by-nc-nd/4.0/
+% (c) 2026 Ayushman Bhattacharya. All rights reserved.
 \documentclass[conference]{IEEEtran}
 
 \usepackage[utf8]{inputenc}
@@ -549,6 +553,13 @@ The caching architecture that grew out of those challenges is now published as t
 Building the search assistant forced us to solve these caching problems; publishing the solution as a standalone library was the natural next step. By extracting these concerns into a reusable package with minimal dependencies (redis, numpy, loguru), we hope to save other developers from the same trial-and-error we went through---so they can focus on what makes their search assistant unique, rather than re-implementing session management and caching from scratch.
 
 \textbf{Future work.} The journey is not over. Potential improvements include: (1)~replacing the pure-Python Huffman codec with an optional C extension for higher throughput on large archives; (2)~adding native async/await support for frameworks like Quart and FastAPI; (3)~supporting pluggable vector databases (FAISS, Chroma) as alternatives to the brute-force cosine similarity search in the semantic cache; and (4)~implementing adaptive TTL policies that learn optimal cache lifetimes from observed query patterns.
+
+% ============================================================
+% LICENSE
+% ============================================================
+\vspace{0.5em}
+\noindent\rule{\columnwidth}{0.4pt}
+{\footnotesize \textbf{License.} This paper is licensed under \href{https://creativecommons.org/licenses/by-nc-nd/4.0/}{CC BY-NC-ND 4.0}. You may share this work with attribution, but you may not modify it or use it commercially. The \texttt{lix\_cache} software library is separately licensed under MIT. \textcopyright~2026 Ayushman Bhattacharya.}
 
 % ============================================================
 % REFERENCES
