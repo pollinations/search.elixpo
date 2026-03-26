@@ -344,7 +344,7 @@ cache.add_message_to_context("user", "What's the weather in Tokyo?")
 ### Self-host with Docker
 
 \`\`\`bash
-docker pull ghcr.io/circuit-overtime/lix-open-search:${v}
+docker pull ghcr.io/circuit-overtime/lixsearch:${v}
 docker compose -f package/docker-compose.yml up -d
 \`\`\`
 
@@ -358,8 +358,8 @@ docker compose -f package/docker-compose.yml up -d
 ### Links
 
 - [PyPI](https://pypi.org/project/lix-open-search/${v}/)
-- [Docker Hub](https://hub.docker.com/r/elixpo/lix-open-search)
-- [GHCR](https://github.com/Circuit-Overtime/lixSearch/pkgs/container/lix-open-search)
+- [Docker Hub](https://hub.docker.com/r/elixpo/lixsearch)
+- [GHCR](https://github.com/Circuit-Overtime/lixSearch/pkgs/container/lixsearch)
 - [Docs](https://github.com/Circuit-Overtime/lixSearch/blob/main/package/README.md)
 - [Research Paper](https://github.com/Circuit-Overtime/lixSearch/blob/main/docs/paper/lix_cache_paper.pdf)
 - [Live Demo](https://search.elixpo.com)
@@ -443,8 +443,8 @@ release_docker() {
         warning "DOCKER_HUB_API not set in .env — skipping Docker Hub push"
     fi
 
-    local ghcr_image="ghcr.io/${GITHUB_USER:-Circuit-Overtime}/lix-open-search"
-    local hub_image="${DOCKERHUB_USER:-elixpo}/lix-open-search"
+    local ghcr_image="ghcr.io/${GITHUB_USER:-Circuit-Overtime}/lixsearch"
+    local hub_image="${DOCKERHUB_USER:-elixpo}/lixsearch"
     local version=$(_get_version)
     info "Building Docker image v${version}"
 
@@ -500,7 +500,7 @@ release_all() {
     local v=$(_get_version)
     success "All released: lix-open-search v${v}"
     info "PyPI:   pip install lix-open-search==${v}"
-    info "Docker: docker pull elixpo/lix-open-search:${v}"
+    info "Docker: docker pull elixpo/lixsearch:${v}"
 }
 
 show_help() {

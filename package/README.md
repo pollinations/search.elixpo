@@ -210,13 +210,13 @@ docker compose -f package/docker-compose.yml up -d --scale app=3
 
 | Registry | Image |
 |----------|-------|
-| GitHub Container Registry | `ghcr.io/circuit-overtime/lix-open-search` |
-| Docker Hub | `elixpo/lix-open-search` |
+| GitHub Container Registry | `ghcr.io/circuit-overtime/lixsearch` |
+| Docker Hub | `elixpo/lixsearch` |
 
 ```bash
-docker pull ghcr.io/circuit-overtime/lix-open-search:latest
+docker pull ghcr.io/circuit-overtime/lixsearch:latest
 # or
-docker pull elixpo/lix-open-search:latest
+docker pull elixpo/lixsearch:latest
 ```
 
 ### What's in the image
@@ -270,7 +270,7 @@ App Workers (:9002, N replicas, 10 Hypercorn workers each)
 - [Live Demo](https://search.elixpo.com)
 - [PyPI](https://pypi.org/project/lix-open-search/)
 - [GitHub](https://github.com/Circuit-Overtime/lixSearch)
-- [Docker Hub](https://hub.docker.com/r/elixpo/lix-open-search)
+- [Docker Hub](https://hub.docker.com/r/elixpo/lixsearch)
 - [Research Paper](https://github.com/Circuit-Overtime/lixSearch/blob/main/docs/paper/lix_cache_paper.pdf)
 
 ## License
