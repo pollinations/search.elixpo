@@ -29,21 +29,21 @@
 
 %% ── Three main cache layers (row 2) ──
 \node[mainbox, redis,
-      below=1.0cm of coordinator, xshift=-4.0cm]
+      below=0.5cm of coordinator, xshift=-4.0cm]
     (session) {%
         \textbf{\footnotesize Session Context}\\[-2pt]
         {\scriptsize Redis DB\,2}\\[-2pt]
         {\scriptsize\textit{20-msg window}}};
 
 \node[mainbox, redis,
-      below=1.0cm of coordinator]
+      below=0.5cm of coordinator]
     (semantic) {%
         \textbf{\footnotesize Semantic Cache}\\[-2pt]
         {\scriptsize Redis DB\,0}\\[-2pt]
         {\scriptsize\textit{cos $\geq$ 0.90}}};
 
 \node[mainbox, redis,
-      below=1.0cm of coordinator, xshift=4.0cm]
+      below=0.5cm of coordinator, xshift=4.0cm]
     (urlcache) {%
         \textbf{\footnotesize URL Embeddings}\\[-2pt]
         {\scriptsize Redis DB\,1}\\[-2pt]
@@ -51,36 +51,36 @@
 
 %% ── Session sub-nodes (row 3) ──
 \node[subbox, redis,
-      below=1.1cm of session, xshift=-1.5cm]
+      below=0.5cm of session, xshift=-1.5cm]
     (hot) {\textbf{Hot}\\{\scriptsize Redis}};
 
 \node[subbox, disk,
-      below=1.1cm of session, xshift=1.5cm]
+      below=0.5cm of session, xshift=1.5cm]
     (cold) {\textbf{Cold}\\{\scriptsize .huff}};
 
 %% ── Semantic sub-nodes (row 3) ──
 \node[subbox, tealfill,
-      below=1.1cm of semantic, xshift=-1.5cm]
+      below=2cm of semantic, xshift=-1.5cm]
     (semhit) {\textbf{HIT}\\{\scriptsize skip LLM}};
 
 \node[subbox, yellowfill,
-      below=1.1cm of semantic, xshift=1.5cm]
+      below=0.5cm of semantic, xshift=1.5cm]
     (semmiss) {\textbf{MISS}\\{\scriptsize call LLM}};
 
 %% ── URL sub-nodes (row 3) ──
 \node[subbox, tealfill,
-      below=1.1cm of urlcache, xshift=-1.5cm]
+      below=2cm of urlcache, xshift=-1.5cm]
     (urlhit) {\textbf{HIT}\\{\scriptsize $\sim$0\,ms}};
 
 \node[subbox, yellowfill,
-      below=1.1cm of urlcache, xshift=1.5cm]
+      below=0.5cm of urlcache, xshift=1.5cm]
     (urlmiss) {\textbf{MISS}\\{\scriptsize embed}};
 
 %% ── Hybrid Storage backing (row 4) ──
 \node[draw, rounded corners=5pt, fill=yellow!8,
       minimum width=12.0cm, minimum height=1.1cm, semithick,
-      below=1.3cm of semantic,
-      label={[font=\footnotesize\bfseries]above:Hybrid Storage (backing)}]
+      below=3.5cm of semantic,
+      label={[font=\footnotesize\bfseries]above:Hybrid Storage}]
     (hybrid) {};
 
 \node[smallbox, redis, at=(hybrid.center), xshift=-4.3cm]
@@ -115,10 +115,10 @@
 \draw[arrow] (session.south) -- ++(-1.5cm, 0) |- (hot.north);
 \draw[dasharrow] (session.south) -- ++(1.5cm, 0) |- (cold.north);
 
-\draw[arrow]  (semantic.south) -- ++(-1.5cm, 0) |- (semhit.north);
+\draw[arrow]  (semantic.south) -- ++(0.5cm, 0) |- (semhit.north);
 \draw[arrow]  (semantic.south) -- ++(1.5cm, 0)  |- (semmiss.north);
 
-\draw[arrow]  (urlcache.south) -- ++(-1.5cm, 0) |- (urlhit.north);
+\draw[arrow]  (urlcache.south) -- ++(0.5cm, 0) |- (urlhit.north);
 \draw[arrow]  (urlcache.south) -- ++(1.5cm, 0)  |- (urlmiss.north);
 
 %% ── Arrows: Sub-nodes → Hybrid ──
