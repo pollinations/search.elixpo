@@ -440,38 +440,40 @@ release_github() {
         exit 1
     fi
 
-    # Commit + push any pending changes first
+    local repo_url
+    repo_url=$(git remote get-url origin | sed 's|.*github.com/||;s|\.git||')
+
     git add -A
     git commit -m "release: update packages" 2>/dev/null || true
     git push origin main 2>/dev/null || true
 
     _do_gh_release() {
-        local pkg_dir=$1 pkg_name=$2 tag_prefix=$3
+        local pkg_dir=$1 pkg_name=$2 tag=$3
         local v=$(_pkg_version "$pkg_dir")
-        local tag="${tag_prefix}-v${v}"
 
         local notes
         notes=$(cat <<NOTES
 ## ${pkg_name} v${v}
 
 \`\`\`bash
-$([ "$tag_prefix" = "cache" ] && echo "pip install lix-open-cache==${v}" || echo "pip install lix-open-search==${v}")
+pip install ${pkg_name}==${v}
 \`\`\`
 
 ### Links
 - [PyPI](https://pypi.org/project/${pkg_name}/${v}/)
-- [Docs](https://github.com/$(git remote get-url origin | sed 's|.*github.com/||;s|\.git||')/tree/main/${pkg_dir})
+- [Docs](https://github.com/${repo_url}/tree/main/${pkg_dir})
 - [Live Demo](https://search.elixpo.com)
 NOTES
         )
 
+        # Collect dist assets
         local assets=()
         [ -d "${pkg_dir}/dist" ] && assets=(${pkg_dir}/dist/*)
 
-        # Delete existing tag + release if they exist, then recreate
+        # Delete existing release + tag, then recreate
+        gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
         git tag -d "$tag" 2>/dev/null || true
         git push origin ":refs/tags/$tag" 2>/dev/null || true
-        gh release delete "$tag" --yes 2>/dev/null || true
 
         git tag "$tag"
         git push origin "$tag"
@@ -479,21 +481,23 @@ NOTES
         if [ ${#assets[@]} -gt 0 ]; then
             gh release create "$tag" "${assets[@]}" \
                 --title "${pkg_name} v${v}" \
-                --notes "$notes"
+                --notes "$notes" \
+                --latest=false
         else
             gh release create "$tag" \
                 --title "${pkg_name} v${v}" \
-                --notes "$notes"
+                --notes "$notes" \
+                --latest=false
         fi
-        success "GitHub release ${tag} created/updated"
+        success "${pkg_name} v${v} → GitHub release '${tag}' (overwritten)"
     }
 
     case "$target" in
-        cache)  _do_gh_release "$CACHE_PKG" "lix-open-cache" "cache" ;;
-        search) _do_gh_release "$SEARCH_PKG" "lix-open-search" "search" ;;
+        cache)  _do_gh_release "$CACHE_PKG" "lix-open-cache" "lix-open-cache" ;;
+        search) _do_gh_release "$SEARCH_PKG" "lix-open-search" "lix-open-search" ;;
         all)
-            _do_gh_release "$CACHE_PKG" "lix-open-cache" "cache"
-            _do_gh_release "$SEARCH_PKG" "lix-open-search" "search"
+            _do_gh_release "$CACHE_PKG" "lix-open-cache" "lix-open-cache"
+            _do_gh_release "$SEARCH_PKG" "lix-open-search" "lix-open-search"
             ;;
         *)      error "Unknown target: $target (use cache, search, or all)"; exit 1 ;;
     esac
