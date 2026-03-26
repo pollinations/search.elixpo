@@ -31,7 +31,7 @@
 
 \hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
 
-\title{Scaling LLM-Powered Web Search on CPU:\\A Three-Layer Caching Architecture with 89\%\\Hit Rate at 0.1\,ms Latency}
+\title{A Three-Layer Caching Architecture for Low-Latency LLM Web Search on Commodity CPU Hardware}
 
 \author{
 \IEEEauthorblockN{Ayushman Bhattacharya}
@@ -367,27 +367,28 @@ Figure~\ref{fig:latency} visualizes the latency characteristics of each storage 
 
 \begin{figure}[h]
 \centering
+\resizebox{\columnwidth}{!}{%
 \begin{tikzpicture}
 \begin{axis}[
     xbar,
-    width=\columnwidth,
-    height=5.5cm,
-    bar width=10pt,
-    xlabel={Latency (ms, log scale)},
-    xlabel style={font=\small},
+    width=7.5cm,
+    height=4.2cm,
+    bar width=7pt,
+    xlabel={Latency (ms)},
+    xlabel style={font=\scriptsize},
     xmode=log,
     xmin=0.05, xmax=200,
     symbolic y coords={
-        Redis GET,
-        Redis pipeline (10 cmds),
-        Huffman decode 6.4KB,
-        Huffman encode 6.4KB,
-        Disk load (6 turns),
-        Disk load (133 turns)
+        {Redis GET},
+        {Pipeline 10cmd},
+        {Huff decode},
+        {Huff encode},
+        {Disk 6 turns},
+        {Disk 133 turns}
     },
     ytick=data,
-    y tick label style={font=\scriptsize},
-    x tick label style={font=\scriptsize},
+    y tick label style={font=\tiny},
+    x tick label style={font=\tiny},
     nodes near coords,
     every node near coord/.append style={font=\tiny, anchor=west},
     point meta=explicit symbolic,
@@ -396,16 +397,17 @@ Figure~\ref{fig:latency} visualizes the latency characteristics of each storage 
     grid style={gray!20},
 ]
 \addplot[fill=blue!30] coordinates {
-(0.107,{Redis GET}) [0.1ms]
-(0.351,{Redis pipeline (10 cmds)}) [0.4ms]
-(8.0,{Huffman decode 6.4KB}) [8.0ms]
-(8.9,{Huffman encode 6.4KB}) [8.9ms]
-(3.0,{Disk load (6 turns)}) [3.0ms]
-(106.6,{Disk load (133 turns)}) [107ms]
+(0.107,{Redis GET}) [0.1]
+(0.351,{Pipeline 10cmd}) [0.4]
+(8.0,{Huff decode}) [8.0]
+(8.9,{Huff encode}) [8.9]
+(3.0,{Disk 6 turns}) [3.0]
+(106.6,{Disk 133 turns}) [107]
 };
 \end{axis}
-\end{tikzpicture}
-\caption{Operation latencies from production containers (log scale). Redis reads are two orders of magnitude faster than disk, confirming the hot-window design. Huffman codec throughput (${\sim}$700--800\,KB/s in pure Python) is sufficient for typical conversation payloads.}
+\end{tikzpicture}%
+}
+\caption{Operation latencies in ms (log scale). Redis reads are two orders of magnitude faster than disk, confirming the hot-window design.}
 \label{fig:latency}
 \end{figure}
 
@@ -507,9 +509,9 @@ Standard approaches use gzip or lz4 for compressing stored conversations. Our us
 \section{Conclusion}
 \label{sec:conclusion}
 
-We started with a simple goal: build a search assistant that could compete with SearchGPT without the \$0.22-per-query price tag. What we got was \texttt{lixSearch}-and along the way, we discovered that the real engineering challenge was not in searching the web or calling an LLM, but in managing the state that accumulates around multi-turn conversations at scale.
+We started with a simple goal: build a search assistant that could compete with SearchGPT without the \$0.22-per-query price tag---and do it on a single 8-vCPU server with no GPU. Along the way, we discovered that the real engineering challenge was not in searching the web or calling an LLM, but in managing the state that accumulates around multi-turn conversations at scale on resource-constrained hardware.
 
-\texttt{lix\_cache} is the library that grew out of those challenges. Each of its three layers-session context, semantic query deduplication, and URL embedding reuse-was born from a specific production pain point, not from a whiteboard architecture session. The result is a system that is simple enough to understand in an afternoon (${\sim}800$ lines of Python) but effective enough to run in production:
+The caching architecture that grew out of those challenges is now published as the open-source Python package \texttt{lix\_cache} (\texttt{pip install lix-chat}). Each of its three layers---session context, semantic query deduplication, and URL embedding reuse---was born from a specific production pain point, not from a whiteboard architecture session. The result is a system that is simple enough to understand in an afternoon (${\sim}800$ lines of Python) but effective enough to run in production on commodity CPU infrastructure:
 
 \begin{itemize}
 \item \textbf{89.3\% aggregate cache hit rate} across all layers over a 6-day measurement window, with Redis memory usage of only 1.38\,MB.
@@ -518,7 +520,7 @@ We started with a simple goal: build a search assistant that could compete with 
 \item \textbf{Transparent session lifecycle management}: LRU eviction, disk archival, re-hydration, and TTL cleanup operate without application-level intervention.
 \end{itemize}
 
-The library is available as \texttt{pip install lix-chat} with minimal dependencies (redis, numpy, loguru). By extracting these concerns into a reusable package, we hope to save other developers from the same trial-and-error we went through-so they can focus on what makes their search assistant unique, rather than re-implementing session management and caching from scratch.
+Building the search assistant forced us to solve these caching problems; publishing the solution as a standalone library was the natural next step. By extracting these concerns into a reusable package with minimal dependencies (redis, numpy, loguru), we hope to save other developers from the same trial-and-error we went through---so they can focus on what makes their search assistant unique, rather than re-implementing session management and caching from scratch.
 
 \textbf{Future work.} The journey is not over. Potential improvements include: (1)~replacing the pure-Python Huffman codec with an optional C extension for higher throughput on large archives; (2)~adding native async/await support for frameworks like Quart and FastAPI; (3)~supporting pluggable vector databases (FAISS, Chroma) as alternatives to the brute-force cosine similarity search in the semantic cache; and (4)~implementing adaptive TTL policies that learn optimal cache lifetimes from observed query patterns.
 

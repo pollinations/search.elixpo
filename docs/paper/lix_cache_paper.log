@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.3.25)  26 MAR 2026 08:08
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.3.25)  26 MAR 2026 08:22
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -699,7 +699,7 @@ Package hyperref Info: Link coloring ON on input line 41.
 
 Package pgfplots notification 'compat/show suggested version=true': document has been generated with the most recent feature set (\pgfplotsset{compat=1.18}).
 
-LaTeX Font Info:    Trying to load font information for T1+pcr on input line 49.
+LaTeX Font Info:    Trying to load font information for T1+pcr on input line 51.
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/t1pcr.fd
 File: t1pcr.fd 2001/06/04 font definitions for T1/pcr.
 )
@@ -762,24 +762,16 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 pdfTeX warning (ext4): destination with the same identifier (name{figure.1}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.188 \item \textbf
-                   {Zero native dependencies.} The codec is pure Python (${\...] [4]
+l.186 \item \textbf
+                   {Exploiting byte frequency skew.} English-language conver...] [4]
 Package pgfplots info on input line 352: Using 'lua backend=false' for axis: ymode=log unsupported (yet).
 Package pgfplots info on input line 352: Using 'lua backend=false' for axis: x coord trafo unsupported.
 
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-Package pgfplots info on input line 397: Using 'lua backend=false' for axis: xmode=log unsupported (yet).
-Package pgfplots info on input line 397: Using 'lua backend=false' for axis: x coord trafo unsupported.
-
-Overfull \hbox (42.92194pt too wide) in paragraph at lines 407--408
- [][] 
- []
-
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
+Package pgfplots info on input line 409: Using 'lua backend=false' for axis: xmode=log unsupported (yet).
+Package pgfplots info on input line 409: Using 'lua backend=false' for axis: x coord trafo unsupported.
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
@@ -788,12 +780,12 @@ LaTeX Warning: `h' float specifier changed to `ht'.
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 489--491
+Underfull \hbox (badness 10000) in paragraph at lines 491--493
 []\T1/ptm/b/n/10 Conversation mem-ory in LLM frame-works.
  []
 
 
-Underfull \hbox (badness 1769) in paragraph at lines 489--491
+Underfull \hbox (badness 1769) in paragraph at lines 491--493
 \T1/ptm/m/n/10 LangChain [[]] pro-vides sev-eral mem-ory modules-buffer,
  []
 
@@ -801,47 +793,48 @@ Underfull \hbox (badness 1769) in paragraph at lines 489--491
 pdfTeX warning (ext4): destination with the same identifier (name{figure.2}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.491 
+l.493 
       
 pdfTeX warning (ext4): destination with the same identifier (name{figure.3}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.491 
+l.493 
       
 pdfTeX warning (ext4): destination with the same identifier (name{table.1}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.491 
+l.493 
       
 pdfTeX warning (ext4): destination with the same identifier (name{table.2}) has been already used, duplicate ignored
 <argument> ...shipout:D \box_use:N \l_shipout_box 
                                                   \__shipout_drop_firstpage_...
-l.491 
+l.493 
       ]
-Underfull \hbox (badness 4013) in paragraph at lines 534--535
+Underfull \hbox (badness 4013) in paragraph at lines 536--537
 []\T1/ptm/m/n/8 Zilliz, ``GPT-Cache: A li-brary for cre-at-ing se-man-tic cache for
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 558--559
+Underfull \hbox (badness 10000) in paragraph at lines 560--561
 []\T1/ptm/m/n/8 OpenAI Com-mu-nity Fo-rum, ``Heads up: Web search tool
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 558--559
+Underfull \hbox (badness 10000) in paragraph at lines 560--561
 \T1/ptm/m/n/8 billing can be higher than you ex-pect - here's why,''
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 558--559
+Underfull \hbox (badness 10000) in paragraph at lines 560--561
 \T1/ptm/m/n/8 2025. [On-line]. Avail-able: [][]$https : / / community . openai . com / t /
  []
 
 
-Overfull \hbox (22.25386pt too wide) in paragraph at lines 558--559
+Overfull \hbox (22.25386pt too wide) in paragraph at lines 560--561
 \T1/ptm/m/n/8 heads-[]up-[]web-[]search-[]tool-[]billing-[]can-[]be-[]higher-[]than-[]you-[]expect-[]here-[]s-[]why /
  []
 
+[7]
 
 ** Conference Paper **
 Before submitting the final camera ready copy, remember to:
@@ -853,7 +846,9 @@ Before submitting the final camera ready copy, remember to:
  uses only Type 1 fonts and that every step in the generation
  process uses the appropriate paper size.
 
-[7] (./lix_cache_paper.aux)
+[8
+
+] (./lix_cache_paper.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-22>
@@ -862,18 +857,18 @@ Package rerunfilecheck Info: File `lix_cache_paper.out' has not changed.
 (rerunfilecheck)             Checksum: 308E3CA148B64C3128E75675C134FAD1;6327.
  ) 
 Here is how much of TeX's memory you used:
- 34754 strings out of 476106
- 801135 string characters out of 5793933
+ 34755 strings out of 476106
+ 801099 string characters out of 5793933
  1955975 words of memory out of 5000000
  56122 multiletter control sequences out of 15000+600000
  681732 words of font info for 169 fonts, out of 8000000 for 9000
  59 hyphenation exceptions out of 8191
- 84i,11n,93p,1191b,2313s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 84i,13n,93p,1451b,2313s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/courier/ucrb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/courier/ucrr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmbi8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmri8a.pfb>
-Output written on lix_cache_paper.pdf (7 pages, 253212 bytes).
+Output written on lix_cache_paper.pdf (8 pages, 253294 bytes).
 PDF statistics:
- 364 PDF objects out of 1000 (max. 8388607)
- 313 compressed objects within 4 object streams
- 74 named destinations out of 1000 (max. 500000)
+ 368 PDF objects out of 1000 (max. 8388607)
+ 316 compressed objects within 4 object streams
+ 75 named destinations out of 1000 (max. 500000)
  293 words of extra memory for PDF output out of 10000 (max. 10000000)
 
