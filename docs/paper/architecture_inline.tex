@@ -60,7 +60,7 @@
 
 %% ── Semantic sub-nodes (row 3) ──
 \node[subbox, tealfill,
-      below=2cm of semantic, xshift=-1.5cm]
+      below=2cm of semantic, xshift=0cm]
     (semhit) {\textbf{HIT}\\{\scriptsize skip LLM}};
 
 \node[subbox, yellowfill,
@@ -69,7 +69,7 @@
 
 %% ── URL sub-nodes (row 3) ──
 \node[subbox, tealfill,
-      below=2cm of urlcache, xshift=-1.5cm]
+      below=2cm of urlcache, xshift=0cm]
     (urlhit) {\textbf{HIT}\\{\scriptsize $\sim$0\,ms}};
 
 \node[subbox, yellowfill,
@@ -78,21 +78,21 @@
 
 %% ── Hybrid Storage backing (row 4) ──
 \node[draw, rounded corners=5pt, fill=yellow!8,
-      minimum width=12.0cm, minimum height=1.1cm, semithick,
+      minimum width=15.0cm, minimum height=1.1cm, semithick,
       below=3.5cm of semantic,
       label={[font=\footnotesize\bfseries]above:Hybrid Storage}]
     (hybrid) {};
 
-\node[smallbox, redis, at=(hybrid.center), xshift=-4.3cm]
+\node[smallbox, redis, at=(hybrid.center), xshift=-5.3cm]
     (hybhot) {Redis\\hot list};
 
-\node[smallbox, disk, at=(hybrid.center), xshift=-1.4cm]
+\node[smallbox, disk, at=(hybrid.center), xshift=-1.5cm]
     (hybcold) {.huff\\archive};
 
-\node[smallbox, purplefill, at=(hybrid.center), xshift=1.4cm]
+\node[smallbox, purplefill, at=(hybrid.center), xshift=1.5cm]
     (hyblru) {LRU\\evict 2\,h};
 
-\node[smallbox, grayfill, at=(hybrid.center), xshift=4.3cm]
+\node[smallbox, grayfill, at=(hybrid.center), xshift=5.3cm]
     (hybttl) {TTL\\14\,d purge};
 
 %% ── Arrows: User → Coordinator ──
@@ -115,11 +115,11 @@
 \draw[arrow] (session.south) -- ++(-1.5cm, 0) |- (hot.north);
 \draw[dasharrow] (session.south) -- ++(1.5cm, 0) |- (cold.north);
 
-\draw[arrow]  (semantic.south) -- ++(0.5cm, 0) |- (semhit.north);
-\draw[arrow]  (semantic.south) -- ++(1.5cm, 0)  |- (semmiss.north);
+\draw[arrow] (semantic.south) -- ++(0, -0.4cm) -| (semhit.north);
+\draw[arrow] (semantic.south -| semmiss.north) -- (semmiss.north);
 
-\draw[arrow]  (urlcache.south) -- ++(0.5cm, 0) |- (urlhit.north);
-\draw[arrow]  (urlcache.south) -- ++(1.5cm, 0)  |- (urlmiss.north);
+\draw[arrow] (urlcache.south) -- ++(0cm, -0.4cm) -| (urlhit.north);
+\draw[arrow] (urlcache.south -| urlmiss.north) -- (urlmiss.north);
 
 %% ── Arrows: Sub-nodes → Hybrid ──
 \draw[dasharrow, gray]

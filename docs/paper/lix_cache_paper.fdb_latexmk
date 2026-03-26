@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1774506485.43371 "/mnt/volume_sfo2_01/lixSearch/docs/paper/lix_cache_paper.tex" "lix_cache_paper.pdf" "lix_cache_paper" 1774506486.59836 0
+["pdflatex"] 1774507035.79794 "/mnt/volume_sfo2_01/lixSearch/docs/paper/lix_cache_paper.tex" "lix_cache_paper.pdf" "lix_cache_paper" 1774507036.85892 0
   "/etc/texmf/web2c/texmf.cnf" 1774466716.6827 475 c0e671620eb5563b2130f56340a5fde8 ""
   "/mnt/volume_sfo2_01/lixSearch/docs/paper/lix_cache_paper.tex" 1774505790.61485 39699 9d0cb9139d43e96f79bf3ed2210da3d1 ""
   "/usr/share/texlive/texmf-dist/fonts/enc/dvips/base/8r.enc" 1165713224 4850 80dc9bab7f31fb78a000ccfed0e27cab ""
@@ -212,9 +212,9 @@
   "/usr/share/texmf/web2c/texmf.cnf" 1707919699 40399 f2c302f7d2af602abb742093540a5834 ""
   "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1774466725.50968 165012 f177baa1c39a3ebd62c3096a43521a0d ""
   "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1774466734 6831078 7a2d7d3d60b71ac35077dbd818a7fffc ""
-  "architecture_inline.tex" 1774506484.91389 4843 dafc6f8ed8e3ab0cb53a55a28787d403 ""
-  "lix_cache_paper.aux" 1774506486.46189 7010 32c88cf6c62df657039e12dc1ade63a3 "pdflatex"
-  "lix_cache_paper.out" 1774506486.46289 6016 96b36b50eb6075339672fb1c8effda6f "pdflatex"
+  "architecture_inline.tex" 1774507033.95457 4837 a5c62041f2e4313c3337d9ee5cc89ceb ""
+  "lix_cache_paper.aux" 1774507036.72757 7010 32c88cf6c62df657039e12dc1ade63a3 "pdflatex"
+  "lix_cache_paper.out" 1774507036.72857 6016 96b36b50eb6075339672fb1c8effda6f "pdflatex"
   "lix_cache_paper.tex" 1774505790.61485 39699 9d0cb9139d43e96f79bf3ed2210da3d1 ""
   (generated)
   "lix_cache_paper.aux"
