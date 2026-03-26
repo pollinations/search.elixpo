@@ -523,15 +523,10 @@ frontend_install_node() {
 }
 
 frontend_deploy() {
-    _sync_paper
-    info "Building + deploying frontend to Cloudflare Pages..."
+    frontend_build
+    info "Deploying to Cloudflare Pages..."
     cd search.elixpo
-
-    export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" 2>/dev/null && nvm use 22 2>/dev/null || true
-
-    npm run pages:build || { cd ..; error "Pages build failed"; exit 1; }
-    npm run pages:deploy || { cd ..; error "Pages deploy failed"; exit 1; }
+    npx wrangler pages deploy out --project-name=elixpo-search || { cd ..; error "Pages deploy failed"; exit 1; }
     cd ..
     success "Frontend deployed to Cloudflare Pages"
 }
