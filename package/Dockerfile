@@ -1,8 +1,8 @@
 # lix-open-search — self-hostable AI search engine
 # https://github.com/elixpo/lixSearch
 #
-# Build:  docker build -f Dockerfile.open -t ghcr.io/elixpo/lix-open-search:latest .
-# Run:    docker compose -f docker-compose.open.yml up -d
+# Build:  cd package && docker compose build
+# Run:    cd package && docker compose up -d
 
 # ── Stage 1: Builder ──────────────────────────────────────
 FROM python:3.11-slim AS builder

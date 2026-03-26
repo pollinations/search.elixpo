@@ -2,12 +2,12 @@
 # https://github.com/elixpo/lixSearch
 #
 # Usage:
-#   cp .env.example .env   # fill in TOKEN, MODEL, HF_TOKEN
-#   docker compose -f docker-compose.open.yml up -d
+#   cp ../.env.example ../.env   # fill in TOKEN, MODEL, HF_TOKEN
+#   cd package && docker compose up -d
 #   curl http://localhost:9002/api/health
 #
 # Scale workers:
-#   docker compose -f docker-compose.open.yml up -d --scale app=3
+#   docker compose up -d --scale app=3
 
 services:
   # ── Redis (session cache, semantic cache, URL cache) ────
@@ -58,8 +58,8 @@ services:
   # ── IPC Service (embeddings + Playwright search agents) ─
   ipc:
     build:
-      context: .
-      dockerfile: Dockerfile.open
+      context: ..
+      dockerfile: package/Dockerfile
     container_name: lix-ipc
     environment:
       - APP_MODE=ipc
@@ -96,8 +96,8 @@ services:
   # ── App Workers (Quart API) ─────────────────────────────
   app:
     build:
-      context: .
-      dockerfile: Dockerfile.open
+      context: ..
+      dockerfile: package/Dockerfile
     environment:
       - APP_MODE=worker
       - WORKER_PORT=9002

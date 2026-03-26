@@ -398,8 +398,8 @@ release_docker() {
         warning "DOCKER_HUB_API not set in .env — skipping Docker Hub push"
     fi
 
-    local ghcr_image="ghcr.io/${GITHUB_USER:-elixpo}/lix-open-search"
-    local hub_image="${GITHUB_USER:-elixpo}/lix-open-search"
+    local ghcr_image="ghcr.io/${GITHUB_USER:-Circuit-Overtime}/lix-open-search"
+    local hub_image="${DOCKERHUB_USER:-elixpo}/lix-open-search"
 
     # Read version from package pyproject
     local pyproject="package/pyproject.toml"
@@ -413,8 +413,8 @@ release_docker() {
 
     check_docker
 
-    # Build with all tags at once
-    docker build -f Dockerfile.open \
+    # Build with all tags at once (context is repo root, Dockerfile in package/)
+    docker build -f package/Dockerfile \
         -t "${ghcr_image}:${version}" \
         -t "${ghcr_image}:latest" \
         -t "${hub_image}:${version}" \
@@ -432,7 +432,7 @@ release_docker() {
     # Push to Docker Hub
     if [ -n "$DOCKER_HUB_API" ]; then
         info "Pushing to Docker Hub..."
-        echo "${DOCKER_HUB_API}" | docker login -u "${GITHUB_USER:-elixpo}" --password-stdin
+        echo "${DOCKER_HUB_API}" | docker login -u "${DOCKERHUB_USER:-elixpo}" --password-stdin
         docker push "${hub_image}:${version}"
         docker push "${hub_image}:latest"
         success "Pushed ${hub_image}:${version}"
