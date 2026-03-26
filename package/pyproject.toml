@@ -27,8 +27,11 @@ dependencies = [
 lz4 = ["lz4>=4.0"]
 
 [project.urls]
-Homepage = "https://github.com/elixpo/lixSearch"
-Documentation = "https://github.com/elixpo/lixSearch/blob/main/lix_open_search/README.md"
+Homepage = "https://search.elixpo.com"
+Repository = "https://github.com/Circuit-Overtime/lixSearch"
+Documentation = "https://github.com/Circuit-Overtime/lixSearch/blob/main/package/README.md"
+"Docker Hub" = "https://hub.docker.com/r/elixpo/lix-open-search"
+"Research Paper" = "https://github.com/Circuit-Overtime/lixSearch/blob/main/docs/paper/lix_cache_paper.pdf"
 
 [tool.setuptools.packages.find]
 include = ["lix_open_search*", "lix_open_cache*"]

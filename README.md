@@ -46,6 +46,11 @@
 
 ---
 
+## 🚩 Released Packages
+|---|---|---|
+Docker | GitHub | PyPi
+
+
 ## ⚙️ How It Works
 
 When you ask lixSearch a question, here's what happens behind the scenes:

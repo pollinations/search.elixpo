@@ -302,35 +302,21 @@ _github_release() {
     success "GitHub release ${tag} created"
 }
 
-release_pypi() {
-    local bump_type=${1:-patch}
-    local pyproject="package/pyproject.toml"
+_get_version() {
+    grep '^version' package/pyproject.toml | sed 's/version = "\(.*\)"/\1/'
+}
 
-    if [ ! -f "$pyproject" ]; then
-        error "package/pyproject.toml not found"
-        exit 1
-    fi
-
-    local current=$(grep '^version' "$pyproject" | sed 's/version = "\(.*\)"/\1/')
-    local new_version=$(_bump_version "$pyproject" "$bump_type")
-    info "lix-open-search: ${current} → ${new_version}"
-
-    # Bump version in pyproject.toml and __init__.py
-    sed -i "s/^version = \".*\"/version = \"${new_version}\"/" "$pyproject"
-    sed -i "s/^__version__ = \".*\"/__version__ = \"${new_version}\"/" package/lix_open_search/__init__.py 2>/dev/null || true
-
-    _build_and_upload_pypi "package" "lix-open-search" "$new_version"
-
-    local notes
-    notes=$(cat <<NOTES
-## lix-open-search v${new_version}
+_release_notes() {
+    local v=$1
+    cat <<NOTES
+## lix-open-search v${v}
 
 Python SDK + caching library for lixSearch — multi-tool AI search with web, video, image, deep research, and production-grade session caching.
 
 ### Install
 
 \`\`\`bash
-pip install lix-open-search==${new_version}
+pip install lix-open-search==${v}
 \`\`\`
 
 ### Includes
@@ -341,7 +327,6 @@ from lix_open_search import LixSearch
 
 lix = LixSearch("http://localhost:9002")
 result = lix.search("quantum computing breakthroughs 2026")
-print(result.content)
 
 for chunk in lix.search_stream("latest AI papers"):
     print(chunk.content, end="", flush=True)
@@ -356,32 +341,92 @@ cache = CacheCoordinator(session_id="user-abc", config=config)
 cache.add_message_to_context("user", "What's the weather in Tokyo?")
 \`\`\`
 
+### Self-host with Docker
+
+\`\`\`bash
+docker pull ghcr.io/circuit-overtime/lix-open-search:${v}
+docker compose -f package/docker-compose.yml up -d
+\`\`\`
+
 ### Features
 
 - **Search SDK**: sync + async clients, streaming, multi-turn sessions, multimodal
 - **Cache library**: 3-layer Redis caching, Huffman disk archival, LRU eviction
-- **OpenAI-compatible** — also works with the standard OpenAI Python client
-- **Self-host**: \`docker compose -f docker-compose.open.yml up -d\`
+- **OpenAI-compatible** — drop-in replacement for OpenAI Python client
+- **Docker**: self-host the full engine on any server
 
 ### Links
 
-- [PyPI](https://pypi.org/project/lix-open-search/${new_version}/)
-- [SDK Docs](https://github.com/elixpo/lixSearch/blob/main/package/README.md)
-- [Docker Image](https://github.com/elixpo/lixSearch/pkgs/container/lix-open-search)
-- [Research Paper](https://github.com/elixpo/lixSearch/blob/main/docs/paper/lix_cache_paper.pdf)
+- [PyPI](https://pypi.org/project/lix-open-search/${v}/)
+- [Docker Hub](https://hub.docker.com/r/elixpo/lix-open-search)
+- [GHCR](https://github.com/Circuit-Overtime/lixSearch/pkgs/container/lix-open-search)
+- [Docs](https://github.com/Circuit-Overtime/lixSearch/blob/main/package/README.md)
+- [Research Paper](https://github.com/Circuit-Overtime/lixSearch/blob/main/docs/paper/lix_cache_paper.pdf)
+- [Live Demo](https://search.elixpo.com)
 NOTES
-    )
+}
 
-    _github_release "v${new_version}" "lix-open-search v${new_version}" "$notes" package/dist/*
+# ── Fine-grained release commands ──────────────────────
 
-    echo ""
-    success "Released lix-open-search v${new_version}"
-    info "Install: pip install lix-open-search==${new_version}"
+release_bump() {
+    local bump_type=${1:-patch}
+    local pyproject="package/pyproject.toml"
+    local current=$(_get_version)
+    local new_version=$(_bump_version "$pyproject" "$bump_type")
+
+    sed -i "s/^version = \".*\"/version = \"${new_version}\"/" "$pyproject"
+    sed -i "s/^__version__ = \".*\"/__version__ = \"${new_version}\"/" package/lix_open_search/__init__.py 2>/dev/null || true
+
+    success "Version bumped: ${current} → ${new_version}"
+}
+
+release_build() {
+    local version=$(_get_version)
+    info "Building package v${version}..."
+    cd package
+    rm -rf dist/ build/ *.egg-info
+    python -m build
+    cd ..
+    success "Built package/dist/ (v${version})"
+}
+
+release_pypi() {
+    local version=$(_get_version)
+    if [ ! -d "package/dist" ]; then
+        release_build
+    fi
+    info "Uploading lix-open-search v${version} to PyPI..."
+    twine upload package/dist/*
+    success "Published to PyPI: pip install lix-open-search==${version}"
+}
+
+release_github() {
+    local version=$(_get_version)
+    local notes=$(_release_notes "$version")
+
+    if ! command -v gh &> /dev/null; then
+        error "gh CLI not installed (https://cli.github.com)"
+        exit 1
+    fi
+
+    info "Creating GitHub release v${version}..."
+    git add package/pyproject.toml package/lix_open_search/__init__.py 2>/dev/null
+    git commit -m "release: lix-open-search v${version}" 2>/dev/null || true
+    git tag -f "v${version}"
+    git push origin main --tags
+
+    local assets=()
+    if [ -d "package/dist" ]; then
+        assets=(package/dist/*)
+    fi
+
+    gh release create "v${version}" "${assets[@]}" \
+        --title "lix-open-search v${version}" \
+        --notes "$notes"
+    success "GitHub release v${version} created"
 }
 
 release_docker() {
-    local bump_type=${1:-patch}
-
     # Load credentials from .env
     if [ -f ".env" ]; then
         set -a
@@ -400,15 +445,7 @@ release_docker() {
 
     local ghcr_image="ghcr.io/${GITHUB_USER:-Circuit-Overtime}/lix-open-search"
     local hub_image="${DOCKERHUB_USER:-elixpo}/lix-open-search"
-
-    # Read version from package pyproject
-    local pyproject="package/pyproject.toml"
-    if [ ! -f "$pyproject" ]; then
-        error "package/pyproject.toml not found"
-        exit 1
-    fi
-
-    local version=$(grep '^version' "$pyproject" | sed 's/version = "\(.*\)"/\1/')
+    local version=$(_get_version)
     info "Building Docker image v${version}"
 
     check_docker
@@ -442,20 +479,28 @@ release_docker() {
     success "Docker image v${version} published"
     info "GHCR: docker pull ${ghcr_image}:${version}"
     info "Hub:  docker pull ${hub_image}:${version}"
-    info "Run:  docker compose -f docker-compose.open.yml up -d"
+    info "Run:  docker compose -f package/docker-compose.yml up -d"
 }
 
 release_all() {
     local bump_type=${1:-patch}
-    info "Releasing all packages (${bump_type} bump)..."
+    info "Full release (${bump_type} bump)..."
     echo ""
 
-    release_pypi "$bump_type"
+    release_bump "$bump_type"
+    release_build
     echo ""
-    release_docker "$bump_type"
+    release_pypi
+    echo ""
+    release_docker
+    echo ""
+    release_github
 
     echo ""
-    success "All packages released!"
+    local v=$(_get_version)
+    success "All released: lix-open-search v${v}"
+    info "PyPI:   pip install lix-open-search==${v}"
+    info "Docker: docker pull elixpo/lix-open-search:${v}"
 }
 
 show_help() {
@@ -479,9 +524,8 @@ ${YELLOW}Commands:${NC}
   backup            Backup Redis data
   clean             Remove all data (volumes)
   test-scale        Test scalability (1→2→3→5 containers)
-  release pypi [TYPE]    Release lix-open-search to PyPI + GitHub (patch|minor|major)
-  release docker         Build + push Docker image to ghcr.io
-  release all [TYPE]     Release everything (PyPI + Docker)
+  release <sub>       Package release (run ./deploy.sh release for details)
+                      sub: version | bump | build | pypi | docker | github | all
   help              Show this help message
 
 ${YELLOW}Examples:${NC}
@@ -493,10 +537,11 @@ ${YELLOW}Examples:${NC}
   ./deploy.sh logs app                    # View app logs
   ./deploy.sh health                      # Check all services
   ./deploy.sh backup                      # Backup Redis
-  ./deploy.sh release pypi                # Bump patch, publish to PyPI + GitHub
-  ./deploy.sh release pypi minor          # Bump minor version
-  ./deploy.sh release docker              # Build + push Docker image to ghcr.io
-  ./deploy.sh release all                 # Release everything (PyPI + Docker)
+  ./deploy.sh release version              # Check package version
+  ./deploy.sh release bump minor          # Bump version only
+  ./deploy.sh release pypi                # Upload to PyPI
+  ./deploy.sh release docker              # Push Docker to ghcr.io + Docker Hub
+  ./deploy.sh release all                 # Full release (bump + build + everything)
 
 ${YELLOW}Environment:${NC}
   Use the root .env file with required variables:
@@ -596,12 +641,36 @@ case "${1:-help}" in
         ;;
     release)
         case "${2:-help}" in
-            pypi)   release_pypi "$3" ;;
-            docker) release_docker "$3" ;;
+            bump)   release_bump "$3" ;;
+            build)  release_build ;;
+            pypi)   release_pypi ;;
+            docker) release_docker ;;
+            github) release_github ;;
             all)    release_all "$3" ;;
+            version) info "Current version: $(_get_version)" ;;
             *)
-                error "Usage: ./deploy.sh release <pypi|docker|all> [patch|minor|major]"
-                exit 1
+                cat <<RELEASE_HELP
+${YELLOW}Usage:${NC} ./deploy.sh release <command> [args]
+
+${YELLOW}Commands:${NC}
+  version              Show current package version
+  bump [TYPE]          Bump version only (patch|minor|major, default: patch)
+  build                Build .whl + .tar.gz (no upload)
+  pypi                 Upload to PyPI (builds first if needed)
+  docker               Build + push Docker image to ghcr.io + Docker Hub
+  github               Create GitHub release with notes + assets
+  all [TYPE]           Full release: bump + build + PyPI + Docker + GitHub
+
+${YELLOW}Examples:${NC}
+  ./deploy.sh release version          # Check current version
+  ./deploy.sh release bump minor       # 0.1.0 → 0.2.0
+  ./deploy.sh release build            # Build without uploading
+  ./deploy.sh release pypi             # Upload current build to PyPI
+  ./deploy.sh release docker           # Push Docker image only
+  ./deploy.sh release github           # Create GitHub release only
+  ./deploy.sh release all              # Everything (patch bump)
+  ./deploy.sh release all minor        # Everything (minor bump)
+RELEASE_HELP
                 ;;
         esac
         ;;
