@@ -322,42 +322,68 @@ The real test of any caching system is whether it actually delivers in productio
 
 \subsection{Cost Comparison: SearchGPT vs.\ lixSearch}
 
-The original motivation for building \texttt{lixSearch} was cost. Figure~\ref{fig:cost} shows the per-query cost comparison between OpenAI's web search API and our system with and without caching. With the semantic cache achieving an 89.3\% hit rate, the effective cost per query drops further-cache hits cost essentially nothing, as no LLM call or search is needed.
+The original motivation for building the search assistant was cost. To understand the comparison, it is important to note a fundamental difference in cost structure between the two systems.
+
+\textbf{SearchGPT cost breakdown.} OpenAI's web search API charges in two parts: (1)~a base fee of \$10--30 per thousand calls, and (2)~a hidden token charge---each search call injects ${\sim}$8{,}000 tokens of retrieved web content into the model context, billed at standard input rates (${\sim}$\$2.50/M tokens for GPT-4o). For a typical query, this amounts to ${\sim}$\$0.02 in token charges on top of the ${\sim}$\$0.01--0.03 base fee, totaling ${\sim}$\$0.22 per query when accounting for output tokens and model overhead~\cite{openai_search_pricing, openai_search_billing}.
+
+\textbf{lixSearch cost breakdown.} Our system has \emph{zero per-query API fees}. LLM inference runs through an open model API (Pollinations.ai) at no per-call cost. Web search is performed by Playwright-based browser agents that scrape results directly---no search API subscription. Embedding computation (sentence-transformers, all-MiniLM-L6-v2) runs locally on CPU via our IPC embedding service. The \emph{only} recurring cost is the server itself: a DigitalOcean 8-vCPU droplet at ${\sim}$\$96/month. Per-query cost is therefore purely amortized infrastructure.
+
+Table~\ref{tab:cost} and Figure~\ref{fig:cost} show the comparison across query volumes.
+
+\begin{table}[h]
+\centering
+\caption{Per-query cost at different monthly volumes}
+\label{tab:cost}
+{\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{System} & \textbf{10k q/mo} & \textbf{50k q/mo} & \textbf{100k q/mo} \\
+\midrule
+SearchGPT API & \$0.220 & \$0.220 & \$0.220 \\
+Ours (no cache) & \$0.0096 & \$0.0019 & \$0.00096 \\
+Ours (89\% cached) & \$0.0011 & \$0.00021 & \$0.00011 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+With the semantic cache achieving an 89.3\% hit rate, only ${\sim}$11\% of queries trigger a full pipeline execution. The remaining 89\% are served directly from Redis---no search agents, no LLM call, no embedding computation. At 50{,}000 queries per month, this yields a \textbf{1{,}000$\times$ cost reduction} compared to SearchGPT.
 
 \begin{figure}[h]
 \centering
+\resizebox{\columnwidth}{!}{%
 \begin{tikzpicture}
 \begin{axis}[
     ybar,
-    width=\columnwidth,
+    width=8cm,
     height=5cm,
-    bar width=18pt,
+    bar width=16pt,
     ylabel={Cost per query (USD)},
-    ylabel style={font=\small},
+    ylabel style={font=\scriptsize},
     ymode=log,
     log origin=infty,
     ymin=0.0001, ymax=1,
     ytick={0.0001, 0.001, 0.01, 0.1, 1},
     yticklabels={\$0.0001, \$0.001, \$0.01, \$0.10, \$1.00},
-    symbolic x coords={SearchGPT API, lixSearch (no cache), lixSearch (cached)},
+    symbolic x coords={{SearchGPT}, {Ours (no cache)}, {Ours (cached)}},
     xtick=data,
     x tick label style={font=\scriptsize, rotate=15, anchor=east},
     y tick label style={font=\scriptsize},
     nodes near coords,
     every node near coord/.append style={font=\tiny, above=2pt},
     point meta=explicit symbolic,
-    enlarge x limits=0.25,
+    enlarge x limits=0.3,
     grid=major,
     grid style={gray!20},
 ]
 \addplot[fill=red!40] coordinates {
-    (SearchGPT API, 0.22) [\$0.220]
-    (lixSearch (no cache), 0.003) [\$0.003]
-    (lixSearch (cached), 0.0003) [\$0.0003]
+({SearchGPT}, 0.22) [\$0.220]
+({Ours (no cache)}, 0.0019) [\$0.002]
+({Ours (cached)}, 0.00021) [\$0.0002]
 };
 \end{axis}
-\end{tikzpicture}
-\caption{Per-query cost comparison (log scale). SearchGPT API includes the hidden context token charge (${\sim}$8k tokens per search). lixSearch uses open models with Playwright-based search agents. The cached cost reflects the 89.3\% hit rate, where cache hits incur zero LLM cost.}
+\end{tikzpicture}%
+}
+\caption{Per-query cost at 50k queries/month (log scale). SearchGPT charges per-query API fees (\$0.22). Our system has zero API fees---cost is amortized server infrastructure (\$96/mo). With 89\% cache hit rate, effective cost drops to \$0.0002/query---a 1{,}000$\times$ reduction.}
 \label{fig:cost}
 \end{figure}
 
