@@ -526,7 +526,7 @@ frontend_deploy() {
     frontend_build
     info "Deploying to Cloudflare Pages..."
     cd search.elixpo
-    npx wrangler pages deploy out --project-name=elixpo-search || { cd ..; error "Pages deploy failed"; exit 1; }
+    npx wrangler pages deploy out || { cd ..; error "Pages deploy failed"; exit 1; }
     cd ..
     success "Frontend deployed to Cloudflare Pages"
 }
