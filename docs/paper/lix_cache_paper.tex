@@ -32,8 +32,8 @@
 \title{lix\_cache: A Multi-Layer Caching Architecture\\for Conversational AI Session Management}
 
 \author{
-\IEEEauthorblockN{Elixpo Research}
-\IEEEauthorblockA{search.elixpo.com}
+\IEEEauthorblockN{Ayushman Bhattacharya}
+\IEEEauthorblockA{ayushman@myceli.ai\\Developer at pollinations.ai}
 }
 
 \begin{document}
@@ -44,7 +44,9 @@
 % ABSTRACT
 % ============================================================
 \begin{abstract}
-Conversational AI systems face a persistent tension between response latency and contextual fidelity. As dialogue sessions grow, maintaining a responsive user experience while preserving conversation history becomes increasingly expensive. We present \texttt{lix\_cache}, an open-source, pip-installable Python library that addresses this problem through a three-layer caching architecture built on Redis and compressed disk storage. The system comprises: (1)~a \emph{Session Context Window} that maintains a rolling window of recent messages in Redis with automatic overflow to Huffman-compressed disk archives; (2)~a \emph{Semantic Query Cache} that eliminates redundant LLM invocations by matching incoming queries against cached responses using cosine similarity on embedding vectors; and (3)~a \emph{URL Embedding Cache} that deduplicates embedding computations across sessions. A background LRU eviction daemon transparently migrates idle sessions from Redis to disk and re-hydrates them on demand. We describe the architecture, design rationale, and implementation of each layer, present a custom binary \texttt{.huff} file format for conversation archival, and evaluate the system's compression efficiency, cache hit rates, and latency characteristics. The library is extracted from the production lixSearch system and is designed for drop-in integration with any chatbot, search assistant, or RAG pipeline.
+When OpenAI launched SearchGPT, it promised the future of AI-powered web search---but at a cost that made it prohibitive for independent developers. At \$30--100+ per thousand API queries, building a search assistant on top of SearchGPT was a non-starter. We set out to build \texttt{lixSearch}, an open-source alternative that could surf the internet with LLMs at a fraction of the cost, using Playwright-based search agents and open models. The system worked---but as users grew, so did the problems. Sessions lost context between turns. Semantically identical queries triggered redundant LLM calls. The same URLs were embedded over and over across sessions. Each problem ate into the cost savings we had fought to achieve.
+
+This paper tells the story of how we solved those problems. We present \texttt{lix\_cache}, a Python library extracted from \texttt{lixSearch} that implements a three-layer caching architecture: (1)~a \emph{Session Context Window} maintaining a rolling window of recent messages in Redis with automatic overflow to Huffman-compressed disk archives; (2)~a \emph{Semantic Query Cache} that catches rephrasings via cosine similarity on embedding vectors, eliminating redundant LLM invocations; and (3)~a \emph{URL Embedding Cache} that deduplicates embedding computations across sessions. A background LRU eviction daemon transparently migrates idle sessions from Redis to disk and re-hydrates them on demand. We describe the journey from a bare-bones search pipeline to a production system serving thousands of queries, detail the architecture and implementation of each caching layer, and evaluate the system's compression efficiency, cache hit rates, and latency characteristics. The library is pip-installable and designed for drop-in integration with any chatbot, search assistant, or RAG pipeline.
 \end{abstract}
 
 \begin{IEEEkeywords}
