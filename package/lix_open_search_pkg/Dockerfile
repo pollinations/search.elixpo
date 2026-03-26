@@ -1,5 +1,5 @@
-# lix-open-search — self-hostable AI search engine
-# https://github.com/elixpo/lixSearch
+# LixSearch — self-hostable AI search engine
+# https://github.com/pollinations/lixSearch
 #
 # Build:  cd package && docker compose build
 # Run:    cd package && docker compose up -d
@@ -22,6 +22,14 @@ RUN playwright install --with-deps chromium && \
 
 # ── Stage 2: Runtime ──────────────────────────────────────
 FROM python:3.11-slim
+
+LABEL org.opencontainers.image.title="LixSearch" \
+      org.opencontainers.image.description="Self-hostable AI search engine — web search, video, images, deep research, RAG, 3-layer semantic caching, Huffman disk archival, and OpenAI-compatible API. Runs on commodity CPU hardware." \
+      org.opencontainers.image.url="https://search.elixpo.com" \
+      org.opencontainers.image.source="https://github.com/pollinations/lixSearch" \
+      org.opencontainers.image.documentation="https://github.com/pollinations/lixSearch/tree/main/package/lix_open_search_pkg" \
+      org.opencontainers.image.vendor="Elixpo" \
+      org.opencontainers.image.licenses="MIT"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates ffmpeg netcat-traditional && \

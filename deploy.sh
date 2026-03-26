@@ -430,6 +430,10 @@ release_docker() {
     success "Docker image v${version} published"
     info "GHCR: docker pull ${ghcr_image}:${version}"
     info "Hub:  docker pull ${hub_image}:${version}"
+    echo ""
+    info "NOTE: If the image doesn't appear in GitHub Packages, ensure your"
+    info "      GITHUB_TOKEN has the 'write:packages' scope enabled."
+    info "      GitHub → Settings → Developer settings → Personal access tokens → Edit"
 }
 
 release_github() {
