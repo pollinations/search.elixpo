@@ -477,7 +477,17 @@ NOTES
 
 # ── Frontend ───────────────────────────────────────────
 
+_sync_paper() {
+    if [ -f "docs/paper/arXiv_research_paper.pdf" ]; then
+        cp docs/paper/arXiv_research_paper.pdf search.elixpo/public/paper.pdf
+        success "Synced research paper → search.elixpo/public/paper.pdf"
+    else
+        warning "docs/paper/arXiv_research_paper.pdf not found — skipping paper sync"
+    fi
+}
+
 frontend_build() {
+    _sync_paper
     info "Building search.elixpo frontend..."
     cd search.elixpo
 
@@ -513,6 +523,7 @@ frontend_install_node() {
 }
 
 frontend_deploy() {
+    _sync_paper
     info "Building + deploying frontend to Cloudflare Pages..."
     cd search.elixpo
 
