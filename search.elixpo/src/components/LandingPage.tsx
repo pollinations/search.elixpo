@@ -158,7 +158,7 @@ export default function LandingPage() {
         </nav>
 
         {/* Hero */}
-        <section className="px-6 md:px-12 pt-20 pb-16 max-w-4xl mx-auto text-center">
+        <section className="px-6 md:px-12 pt-7 pb-16 max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-xs text-white/50 mb-8">
             <Sparkles size={12} className="text-indigo-400" />
             Open-source AI search engine
@@ -210,46 +210,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Features */}
-        <section className="px-6 md:px-12 py-16 max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <FeatureCard
-              icon={Search}
-              title="Multi-source search"
-              description="Searches the web, academic papers, news, and more — then ranks and deduplicates results intelligently."
-            />
-            <FeatureCard
-              icon={Zap}
-              title="Deep search"
-              description="Decomposes complex queries into sub-questions, researches each one, and merges findings into a cohesive answer."
-            />
-            <FeatureCard
-              icon={Globe}
-              title="Real citations"
-              description="Every claim is backed by source URLs. No hallucinated references — all sources are fetched and verified."
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-            <FeatureCard
-              icon={Database}
-              title="Semantic caching"
-              description="Three-layer Redis caching with vector embeddings for near-instant responses to similar queries."
-            />
-            <FeatureCard
-              icon={Shield}
-              title="Session memory"
-              description="Conversations persist across messages with a hybrid hot/cold storage system and smart context retrieval."
-            />
-            <FeatureCard
-              icon={Sparkles}
-              title="OpenAI compatible"
-              description="Drop-in replacement API compatible with OpenAI's chat completions format. Use your existing tools and SDKs."
-            />
-          </div>
-        </section>
-
-        {/* Packages */}
+          {/* Packages */}
         <section className="px-6 md:px-12 py-16 max-w-5xl mx-auto">
           <div className="text-center mb-12">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-xs text-white/50 mb-4">
@@ -300,6 +261,47 @@ export default function LandingPage() {
             />
           </div>
         </section>
+
+        {/* Features */}
+        <section className="px-6 md:px-12 py-16 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <FeatureCard
+              icon={Search}
+              title="Multi-source search"
+              description="Searches the web, academic papers, news, and more — then ranks and deduplicates results intelligently."
+            />
+            <FeatureCard
+              icon={Zap}
+              title="Deep search"
+              description="Decomposes complex queries into sub-questions, researches each one, and merges findings into a cohesive answer."
+            />
+            <FeatureCard
+              icon={Globe}
+              title="Real citations"
+              description="Every claim is backed by source URLs. No hallucinated references — all sources are fetched and verified."
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <FeatureCard
+              icon={Database}
+              title="Semantic caching"
+              description="Three-layer Redis caching with vector embeddings for near-instant responses to similar queries."
+            />
+            <FeatureCard
+              icon={Shield}
+              title="Session memory"
+              description="Conversations persist across messages with a hybrid hot/cold storage system and smart context retrieval."
+            />
+            <FeatureCard
+              icon={Sparkles}
+              title="OpenAI compatible"
+              description="Drop-in replacement API compatible with OpenAI's chat completions format. Use your existing tools and SDKs."
+            />
+          </div>
+        </section>
+
+      
 
         {/* Code snippet / API preview */}
         <section className="px-6 md:px-12 py-16 max-w-3xl mx-auto">
