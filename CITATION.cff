@@ -1,6 +1,6 @@
-cff-version: 1.2.0
+cff-version: 2.2.0
 type: software
-title: "lixSearch: Intelligent Multi-Worker Search & RAG System"
+title: "A Three-Layer Caching Architecture for Low-Latency LLM Web Search on Commodity CPU Hardware"
 abstract: "A production-grade, horizontally-scalable search and Retrieval-Augmented Generation (RAG) system featuring multi-layer caching, Playwright-based search agents, and Huffman-compressed session archival on commodity CPU hardware."
 
 authors:
