@@ -8,7 +8,6 @@ const LINKS = {
   docs: '/docs',
   pollinations: 'https://pollinations.ai',
   github: 'https://github.com/Circuit-Overtime/lixSearch',
-  pypiSearch: 'https://pypi.org/project/lix-open-search/',
   pypiCache: 'https://pypi.org/project/lix-open-cache/',
   dockerHub: 'https://hub.docker.com/r/elixpo/lixsearch',
   paper: 'https://github.com/Circuit-Overtime/lixSearch/blob/main/docs/paper/lix_cache_paper.pdf',
@@ -227,14 +226,14 @@ export default function LandingPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <PackageCard
-              icon={Search}
+              icon={BookOpen}
               iconColor="bg-indigo-500/20 border border-indigo-500/30"
-              title="lix-open-search"
-              description="Python client SDK with sync + async, streaming, multi-turn sessions, and multimodal search. OpenAI-compatible."
-              installCmd="pip install lix-open-search"
+              title="Research Paper"
+              description="A Three-Layer Caching Architecture for Low-Latency LLM Web Search on Commodity CPU Hardware."
+              installCmd="Read the paper"
               links={[
-                { label: 'PyPI', href: LINKS.pypiSearch },
-                { label: 'Docs', href: LINKS.github + '/tree/main/package/lix_open_search_pkg' },
+                { label: 'PDF', href: LINKS.paper },
+                { label: 'Source', href: LINKS.github + '/tree/main/docs/paper' },
               ]}
             />
             <PackageCard
