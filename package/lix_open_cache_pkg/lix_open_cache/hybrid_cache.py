@@ -28,7 +28,7 @@ _eviction_thread_lock = threading.Lock()
 def _get_archive(config: Optional[CacheConfig] = None) -> ConversationArchive:
     global _archive, _archive_config
     if config is None:
-        config = CacheConfig.from_env()
+        config = CacheConfig()
     if _archive is None or _archive_config is not config:
         with _archive_lock:
             if _archive is None or _archive_config is not config:
