@@ -74,7 +74,7 @@ We wanted to build something different: a search assistant that could browse the
 
 \subsection{The First Version: Raw Search + LLM}
 
-So we built \texttt{lixSearch} from scratch. The initial version was deliberately simple. Instead of paying per-query fees to a proprietary search API, we used Playwright-based browser agents to perform web searches directly-the same way a human would. The agents scraped search results, fetched full page content, and fed it to an open LLM for synthesis. There was no retrieval-augmented generation (RAG), no vector database, no caching layer. Just a search agent pool, a language model, and a pipeline connecting them.
+So we built our search assistant from scratch. The initial version was deliberately simple. Instead of paying per-query fees to a proprietary search API, we used Playwright-based browser agents to perform web searches directly-the same way a human would. The agents scraped search results, fetched full page content, and fed it to an open LLM for synthesis. There was no retrieval-augmented generation (RAG), no vector database, no caching layer. Just a search agent pool, a language model, and a pipeline connecting them.
 
 It worked. The per-query cost dropped dramatically-from \$0.22 with SearchGPT to fractions of a cent with open models and free search. But as users grew and conversations got longer, three problems emerged that threatened to erode every cost advantage we had built:
 
@@ -100,7 +100,7 @@ So we built \texttt{lix\_open\_cache}-a three-layer caching architecture that gr
 
 The system also introduced a \textbf{two-tier hybrid storage model}---Redis for hot data (${\sim}1$\,ms reads) and Huffman-compressed disk archives for cold data---connected by a background LRU eviction daemon. A \textbf{custom binary archive format} with a 24-byte header achieves 45--67\% compression on conversation text using pure Python, with zero native dependencies. All tunables are consolidated into a single configuration object with environment variable support, making the system deployable across different environments without code changes.
 
-This architecture powers the production \texttt{lixSearch} system at \texttt{search.elixpo.com}, serving an 89.3\% cache hit rate with just 1.38\,MB of Redis memory---enabling conversations that persist indefinitely across sessions, server restarts, and horizontal scaling events.
+In production, this architecture serves an 89.3\% cache hit rate with just 1.38\,MB of Redis memory---enabling conversations that persist indefinitely across sessions, server restarts, and horizontal scaling events.
 
 The remainder of this paper follows the arc of this journey. Section~\ref{sec:architecture} presents the architecture that emerged. Section~\ref{sec:design} explains the design decisions we made and why. Section~\ref{sec:implementation} details the implementation. Section~\ref{sec:evaluation} evaluates what we achieved in production. Section~\ref{sec:related} surveys related work, and Section~\ref{sec:conclusion} reflects on what we learned.
 
@@ -322,15 +322,15 @@ We chose re-entrant locks specifically because the call graph is nested: flushin
 \section{Evaluation}
 \label{sec:evaluation}
 
-The real test of any caching system is whether it actually delivers in production-especially on modest hardware. Our entire stack runs on a single DigitalOcean droplet: an 8-vCPU Intel Cascade Lake (2\,GHz) with 32\,GB RAM, no GPU. The search assistant runs as three containerized replicas (2\,vCPU, 2\,GB RAM limit each) with 10 Hypercorn async workers per replica-30 workers total. Redis 7.4 runs in its own container capped at 2\,GB, and an nginx load balancer sits in front. All measurements below were taken from this live system-no synthetic benchmarks, no cherry-picked scenarios.
+The real test of any caching system is whether it actually delivers in production---especially on modest hardware. Our entire stack runs on a single 8-vCPU Intel Cascade Lake cloud instance (2\,GHz, 32\,GB RAM, no GPU). The search assistant runs as three containerized replicas (2\,vCPU, 2\,GB RAM limit each) with 10 async workers per replica---30 workers total. Redis 7.4 runs in its own container capped at 2\,GB, and an nginx load balancer sits in front. All measurements below were taken from this live system---no synthetic benchmarks, no cherry-picked scenarios.
 
-\subsection{Cost Comparison: SearchGPT vs.\ lixSearch}
+\subsection{Cost Comparison: SearchGPT vs.\ Our System}
 
 The original motivation for building the search assistant was cost. To understand the comparison, it is important to note a fundamental difference in cost structure between the two systems.
 
 \textbf{SearchGPT cost breakdown.} OpenAI's web search API charges in two parts: (1)~a base fee of \$10--30 per thousand calls, and (2)~a hidden token charge-each search call injects ${\sim}$8{,}000 tokens of retrieved web content into the model context, billed at standard input rates (${\sim}$\$2.50/M tokens for GPT-4o). For a typical query, this amounts to ${\sim}$\$0.02 in token charges on top of the ${\sim}$\$0.01--0.03 base fee, totaling ${\sim}$\$0.22 per query when accounting for output tokens and model overhead~\cite{openai_search_pricing, openai_search_billing}.
 
-\textbf{lixSearch cost breakdown.} Our system has \emph{zero per-query API fees}. LLM inference runs through an open model API (Pollinations.ai) at no per-call cost. Web search is performed by Playwright-based browser agents that scrape results directly-no search API subscription. Embedding computation (sentence-transformers, all-MiniLM-L6-v2) runs locally on CPU via our IPC embedding service. The \emph{only} recurring cost is the server itself: a DigitalOcean 8-vCPU droplet at ${\sim}$\$96/month. Per-query cost is therefore purely amortized infrastructure.
+\textbf{Our cost breakdown.} Our system has \emph{zero per-query API fees}. LLM inference runs through an open model API at no per-call cost. Web search is performed by Playwright-based browser agents that scrape results directly---no search API subscription. Embedding computation (sentence-transformers, all-MiniLM-L6-v2) runs locally on CPU via a dedicated embedding service. The \emph{only} recurring cost is the server itself: an 8-vCPU cloud instance at ${\sim}$\$96/month. Per-query cost is therefore purely amortized infrastructure.
 
 Table~\ref{tab:cost} and Figure~\ref{fig:cost} show the comparison across query volumes.
 
@@ -541,7 +541,7 @@ Standard approaches use gzip or lz4 for compressing stored conversations. Our us
 
 We started with a simple goal: build a search assistant that could compete with SearchGPT without the \$0.22-per-query price tag-and do it on a single 8-vCPU server with no GPU. Along the way, we discovered that the real engineering challenge was not in searching the web or calling an LLM, but in managing the state that accumulates around multi-turn conversations at scale on resource-constrained hardware.
 
-The caching architecture that grew out of those challenges now powers every conversation on \texttt{lixSearch}. Each of its three layers---session context, semantic query deduplication, and URL embedding reuse---was born from a specific production pain point, not from a whiteboard architecture session. The result is a system that is simple enough to understand in an afternoon (${\sim}800$ lines of Python) but effective enough to sustain indefinitely long conversations in production on commodity CPU infrastructure:
+The caching architecture that grew out of those challenges now powers every conversation on our search assistant. Each of its three layers---session context, semantic query deduplication, and URL embedding reuse---was born from a specific production pain point, not from a whiteboard architecture session. The result is a system that is simple enough to understand in an afternoon (${\sim}800$ lines of Python) but effective enough to sustain indefinitely long conversations in production on commodity CPU infrastructure:
 
 \begin{itemize}
 \item \textbf{89.3\% aggregate cache hit rate} across all layers over a 6-day measurement window, with Redis memory usage of only 1.38\,MB.
@@ -559,7 +559,7 @@ The key insight is that forever-continuous conversations---sessions that can spa
 % ============================================================
 \vspace{0.5em}
 \noindent\rule{\columnwidth}{0.4pt}
-{\footnotesize \textbf{License.} This paper is licensed under \href{https://creativecommons.org/licenses/by-nc-nd/4.0/}{CC BY-NC-ND 4.0}. You may share this work with attribution, but you may not modify it or use it commercially. The \texttt{lixSearch} software is separately licensed under MIT. \textcopyright~2026 Ayushman Bhattacharya.}
+{\footnotesize \textbf{License.} This paper is licensed under \href{https://creativecommons.org/licenses/by-nc-nd/4.0/}{CC BY-NC-ND 4.0}. You may share this work with attribution, but you may not modify it or use it commercially. The accompanying software is separately licensed under MIT. \textcopyright~2026 Ayushman Bhattacharya.}
 
 % ============================================================
 % REFERENCES
