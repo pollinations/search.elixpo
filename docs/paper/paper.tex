@@ -335,23 +335,25 @@ Table~\ref{tab:cost} and Figure~\ref{fig:cost} show the comparison across query 
 
 \begin{table}[h]
 \centering
-\caption{Per-query cost at different monthly volumes}
+\caption{Cost comparison: commercial AI search APIs vs.\ lixSearch}
 \label{tab:cost}
-{\small
-\begin{tabular}{@{}lrrr@{}}
+{\scriptsize
+\begin{tabular}{@{}lrrl@{}}
 \toprule
-\textbf{System} & \textbf{10k q/mo} & \textbf{50k q/mo} & \textbf{100k q/mo} \\
+\textbf{System} & \textbf{Per query} & \textbf{100k q/mo} & \textbf{Model} \\
 \midrule
-SearchGPT API & \$0.220 & \$0.220 & \$0.220 \\
-Perplexity Sonar & \$0.005 & \$0.005 & \$0.005 \\
-Google Gemini (grounded) & \$0.035 & \$0.035 & \$0.035 \\
-lixSearch (no cache) & \$0.0096 & \$0.0019 & \$0.00096 \\
-lixSearch (89\% cached) & \$0.0011 & \$0.00021 & \$0.00011 \\
+SearchGPT API & \$0.220 & \$22{,}000 & per-query \\
+Google Gemini & \$0.035 & \$3{,}500 & per-query \\
+Perplexity Pro & \$0.015 & \$1{,}500 & per-query \\
+Perplexity Sonar & \$0.005 & \$500 & per-query \\
+\midrule
+lixSearch & \$0.00096 & \$96 & fixed infra \\
+\,+ 89\% cache & \$0.00021 & \$96 & fixed infra \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
-With the semantic cache achieving an 89.3\% hit rate, only ${\sim}$11\% of queries trigger a full pipeline execution. The remaining 89\% are served directly from Redis-no search agents, no LLM call, no embedding computation. At 50{,}000 queries per month, this yields a \textbf{1{,}000$\times$ cost reduction} compared to SearchGPT, \textbf{24$\times$} compared to Perplexity Sonar, and \textbf{167$\times$} compared to Google's grounded Gemini.
+Commercial providers charge linearly per query-costs scale with volume. lixSearch has a \emph{fixed} infrastructure cost (\$96/month for an 8-vCPU server) regardless of query volume. With the semantic cache achieving an 89.3\% hit rate, only ${\sim}$11\% of queries trigger a full pipeline execution. The remaining 89\% are served directly from Redis-no search agents, no LLM call, no embedding computation. At 100{,}000 queries per month, lixSearch costs \textbf{229$\times$} less than SearchGPT, \textbf{36$\times$} less than Google Gemini, and \textbf{5$\times$} less than Perplexity Sonar.
 
 \begin{figure}[h]
 \centering
