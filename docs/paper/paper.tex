@@ -98,7 +98,7 @@ So we built a three-layer caching architecture that grew organically out of the 
 \item \textbf{Layer 3: URL Embedding Cache.} A global, cross-session store of pre-computed embedding vectors with 24-hour TTL. Born from profiling and discovering that a significant fraction of embedding computations were redundant across concurrent sessions.
 \end{itemize}
 
-The system also introduced a \textbf{two-tier hybrid storage model}. Redis for hot data (${\sim}1$\,ms reads) and Huffman-compressed disk archives for cold data connected by a background LRU eviction daemon. A \textbf{custom binary archive format} with a 24-byte header achieves 45--67\% compression on conversation text using pure Python, with zero native dependencies. All tunables are consolidated into a single configuration object with environment variable support, making the system deployable across different environments without code changes.
+The system also introduced a \textbf{two-tier hybrid storage model}. Redis for hot data (${\sim}1$\,ms reads) and Huffman-compressed disk archives for cold data connected by a background LRU eviction daemon. Alongside with this, a \textbf{custom binary archive format} having a 24-byte header achieves 45-67\% compression on conversation based text, using zero native dependencies. All tunables are consolidated into a single configuration object with environment variable support, making the system deployable across different environments without code changes.
 
 In production, this architecture serves an 89.3\% cache hit rate with just 1.38\,MB of Redis memory, enabling conversations that persist indefinitely across sessions, server restarts, and horizontal scaling events.
 
@@ -112,7 +112,9 @@ The remainder of this paper follows the arc of this journey. Section~\ref{sec:ar
 
 \subsection{Overview}
 
-With the problems identified, the architecture took shape around a simple principle: each problem gets its own caching layer, each layer gets its own Redis database, and a single coordinator fa\c{c}ade ties them together. Figure~\ref{fig:architecture} illustrates the complete data flow when a user message arrives.
+With the problems identified, the architecture took shape around a simple 
+principle: each caching concern gets its own logical partition within a single Redis instance (DB~0 for semantic query cache, DB~1 for URL embeddings, DB~2 for session context), and a single coordinator process ties them together. Figure~\ref{fig:architecture} illustrates 
+the complete data flow when a user message arrives.
 
 \begin{figure*}[t]
 \centering
