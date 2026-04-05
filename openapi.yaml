@@ -15,15 +15,42 @@ info:
     ## Quick Start
 
     ```bash
-    # Streaming search (OpenAI format)
+    # Text query (non-streaming, no session needed)
+    curl -X POST https://search.elixpo.com/v1/chat/completions \
+      -H "Content-Type: application/json" \
+      -d '{"messages": [{"role": "user", "content": "What is quantum computing?"}]}'
+
+    # Streaming search
     curl -X POST https://search.elixpo.com/v1/chat/completions \
       -H "Content-Type: application/json" \
       -d '{"messages": [{"role": "user", "content": "What is quantum computing?"}], "stream": true}'
 
-    # Simple search
-    curl "https://search.elixpo.com/api/search?query=latest+AI+news&session_id=my-session&stream=false"
+    # Image input (URL)
+    curl -X POST https://search.elixpo.com/v1/chat/completions \
+      -H "Content-Type: application/json" \
+      -d '{"messages": [{"role": "user", "content": [{"type": "text", "text": "What is this?"}, {"type": "image_url", "image_url": {"url": "https://example.com/photo.jpg"}}]}]}'
+
+    # Image input (base64) — auto-hosted, no session needed
+    curl -X POST https://search.elixpo.com/v1/chat/completions \
+      -H "Content-Type: application/json" \
+      -d '{"messages": [{"role": "user", "content": [{"type": "text", "text": "Describe this"}, {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQ..."}}]}]}'
     ```
-  version: 2.2.0
+
+    ## Session-Free Usage
+
+    The `/v1/chat/completions` endpoint works **without a `session_id`**. When omitted,
+    an ephemeral session is created automatically — no state is persisted after the request.
+    Use the `messages` array to pass full conversation context (multi-turn) in each request.
+
+    ## Image Input
+
+    Images can be passed via the OpenAI vision format in the `messages` array:
+    - **URL**: `{"type": "image_url", "image_url": {"url": "https://..."}}`
+    - **Base64**: `{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}`
+
+    Base64 images are automatically stored on the server and converted to a hosted URL
+    before processing. Up to 3 images per request.
+  version: 2.3.0
   contact:
     name: Elixpo
     url: https://elixpo.com
@@ -74,15 +101,22 @@ paths:
         - Extracts the last user message as the search query
         - Preceding messages are used as conversation history for context
         - System messages are accepted but not used (lixSearch has its own system prompt)
-        - Supports OpenAI vision format (`content` as array with `text` and `image_url` parts)
-        - Auto-generates a deterministic `session_id` from the first user message if not provided
+        - `session_id` is **optional** — when omitted, an ephemeral session is used (no state persisted)
+        - `stream` defaults to **false**
+
+        **Image support** (OpenAI vision format):
+        - Pass images in the `content` array as `image_url` parts
+        - Supports both **HTTPS URLs** and **base64 data URIs** (`data:image/jpeg;base64,...`)
+        - Base64 images are auto-hosted on the server and converted to URLs before pipeline processing
+        - Up to 3 images per request
+        - If only images are provided (no text), the model describes the image(s)
+        - If text + images are provided, the model answers the query using the image(s) as context
 
         **Extensions** (non-standard fields):
-        - `session_id`: Explicit session ID for context persistence across requests
+        - `session_id`: Explicit session ID for context persistence across requests (optional)
 
         **Deep Search**: The pipeline automatically detects complex, multi-faceted queries and
-        activates deep research mode — no explicit parameter needed. Deep search decomposes the
-        query into sub-topics, researches each independently, and synthesizes a comprehensive answer.
+        activates deep research mode — no explicit parameter needed.
       tags:
         - OpenAI Compatible
       requestBody:
@@ -111,8 +145,8 @@ paths:
                       content: "How does it compare to classical computing?"
                   stream: true
                   session_id: "my-session-123"
-              vision:
-                summary: Image input (vision format)
+              vision_url:
+                summary: Image input (URL)
                 value:
                   messages:
                     - role: user
@@ -122,7 +156,26 @@ paths:
                         - type: image_url
                           image_url:
                             url: "https://example.com/photo.jpg"
-                  stream: false
+              vision_base64:
+                summary: Image input (base64)
+                value:
+                  messages:
+                    - role: user
+                      content:
+                        - type: text
+                          text: "Describe this image"
+                        - type: image_url
+                          image_url:
+                            url: "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+              image_only:
+                summary: Image-only (no text query)
+                value:
+                  messages:
+                    - role: user
+                      content:
+                        - type: image_url
+                          image_url:
+                            url: "https://example.com/photo.jpg"
               complex_research:
                 summary: Complex query (auto-triggers deep search)
                 value:
@@ -1038,8 +1091,13 @@ components:
           properties:
             url:
               type: string
-              format: uri
-          description: Image URL (when type is "image_url")
+              description: |
+                Image source. Accepts:
+                - **HTTPS URL**: `https://example.com/photo.jpg`
+                - **Base64 data URI**: `data:image/jpeg;base64,/9j/4AAQ...`
+
+                Base64 images are auto-hosted on the server before processing.
+          description: Image reference (when type is "image_url"). Up to 3 images per request.
 
     ChatCompletionRequest:
       type: object
@@ -1071,8 +1129,9 @@ components:
         session_id:
           type: string
           description: |
-            **Extension.** Explicit session ID for context persistence.
-            If omitted, a deterministic ID is generated from the first user message.
+            **Extension.** Optional session ID for context persistence across requests.
+            If omitted, an ephemeral session is used — no state is persisted after the request.
+            Use the `messages` array to provide full conversation context in each request instead.
 
     ChatCompletionResponse:
       type: object
