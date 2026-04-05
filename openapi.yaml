@@ -80,8 +80,8 @@ tags:
     description: Lightweight search — raw URLs and images, no LLM synthesis
   - name: Sessions
     description: Session lifecycle — create, read, delete conversation sessions
-  - name: Images
-    description: Hosted images — generated or uploaded via base64
+  - name: Media
+    description: Hosted files — images and PDFs referenced in chat responses
   - name: System
     description: Health and models
 
@@ -461,7 +461,7 @@ paths:
         - A base64 image is uploaded through `/v1/chat/completions`
 
         Images have a 7-day TTL and are cleaned up automatically. No auth required.
-      tags: [Images]
+      tags: [Media]
       security: []
       parameters:
         - name: image_id
@@ -484,6 +484,36 @@ paths:
                 format: binary
         '404':
           description: Image not found
+
+  /api/content/{content_id}:
+    get:
+      operationId: getContent
+      summary: Get content
+      description: |
+        Serves hosted content (PDFs, documents) by ID. Content is created when
+        the model generates a PDF via the `export_to_pdf` tool during a chat response.
+
+        The response will contain a link like `https://search.elixpo.com/api/content/{id}`.
+        Content has a 7-day TTL and is cleaned up automatically. No auth required.
+      tags: [Media]
+      security: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Content identifier (UUID)
+      responses:
+        '200':
+          description: Content file (typically PDF)
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Content not found
 
 components:
   securitySchemes:
