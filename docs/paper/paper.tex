@@ -60,7 +60,52 @@ LLM caching architecture, AI-powered web search, semantic query deduplication, c
 \end{IEEEkeywords}
 
 % ============================================================
-% I. INTRODUCTION
+% RELATED WORK
+% ============================================================
+\section{Related Work}
+\label{sec:related}
+
+Table~\ref{tab:related} summarizes the landscape of existing tools and how our system differs. No single prior system addresses all three concerns (session persistence, semantic deduplication, embedding reuse) in a unified, lightweight package.
+
+\begin{table}[h]
+\centering
+\caption{Feature comparison with existing systems}
+\label{tab:related}
+{\scriptsize
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+& \rotatebox{60}{\textbf{Session persist.}} & \rotatebox{60}{\textbf{Disk archival}} & \rotatebox{60}{\textbf{Semantic dedup}} & \rotatebox{60}{\textbf{Embed. reuse}} & \rotatebox{60}{\textbf{Redis-only}} \\
+\midrule
+LangChain~\cite{langchain2023} & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+LlamaIndex~\cite{llamaindex2023} & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+GPTCache~\cite{gptcache2023} & \ding{55} & \ding{55} & \ding{51} & \ding{55} & \ding{55} \\
+MemGPT~\cite{memgpt2023} & \ding{51} & \ding{51} & \ding{55} & \ding{55} & \ding{55} \\
+Sem.\ Kernel~\cite{semantic_kernel2023} & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{51} \\
+\midrule
+\textbf{Ours} & \ding{51} & \ding{51} & \ding{51} & \ding{51} & \ding{51} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\textbf{Conversation memory in LLM frameworks.}
+LangChain~\cite{langchain2023} provides several memory modules---buffer, summary, and windowed variants---that maintain conversation state for LLM chains. These operate in-process and do not persist across restarts or scale across replicas. LlamaIndex~\cite{llamaindex2023} offers similar in-memory chat stores. Our system differs by providing Redis-backed persistence with automatic disk archival, enabling shared state across horizontally scaled application instances.
+
+\textbf{Semantic caching for LLMs.}
+GPTCache~\cite{gptcache2023} is the closest prior work to our semantic query cache layer. It intercepts LLM calls, computes embeddings for queries, and returns cached responses when similarity exceeds a threshold. GPTCache supports multiple embedding backends and vector stores (FAISS, Milvus, etc.). Our design differs in three significant ways: (1)~GPTCache is a \emph{global} cache with no per-session isolation---in a multi-user search assistant, this would leak responses across users. Our cache is scoped per-session by design. (2)~GPTCache requires a separate vector database (FAISS, Milvus, or Qdrant) for similarity search, adding operational complexity. Our system stores embeddings directly in Redis as JSON arrays, requiring no additional infrastructure. (3)~GPTCache addresses only the semantic caching concern. It does not provide session context management, disk archival, or cross-session embedding reuse. These are the other two layers that, in our experience, account for the majority of compute savings.
+
+We did not benchmark GPTCache directly against our system because the two are not drop-in replacements: GPTCache is a middleware that wraps LLM calls, while our system is an integrated caching layer that manages sessions, context, and embeddings as a unified concern. A meaningful comparison would require building equivalent session management and embedding reuse on top of GPTCache, which would effectively recreate our architecture.
+
+\textbf{Redis as a caching layer.}
+Redis is widely used as an LLM response cache. Frameworks like Semantic Kernel~\cite{semantic_kernel2023} and Haystack~\cite{haystack2023} support Redis as a cache backend. However, these typically use Redis as a flat key-value store. Our system uses three separate Redis logical databases with distinct TTL profiles and data formats, and adds the hybrid hot/cold tier with disk overflow---a pattern not found in existing frameworks.
+
+\textbf{Conversation compression and archival.}
+MemGPT~\cite{memgpt2023} addresses the context window limitation by paging conversation history between a main context and an external storage tier, analogous to virtual memory. Our approach is similar in spirit: the hot Redis window serves as ``main memory'' and the Huffman-compressed disk archive as ``swap.'' However, MemGPT focuses on autonomous LLM-driven memory management (the LLM decides what to page in/out), while our system uses deterministic LRU eviction with fixed window sizes---simpler to reason about and debug in production.
+
+\textbf{Data compression for chat.}
+Standard approaches use gzip or lz4 for compressing stored conversations. Our use of canonical Huffman coding is motivated by the small payload sizes typical of conversation archives ($<$10\,KB in 90\% of cases), where dictionary-based compressors have proportionally higher overhead. As shown in Table~\ref{tab:compression_comparison}, Huffman outperforms lz4 and approaches zlib within 5--10 percentage points at these sizes, while requiring zero native dependencies---simplifying deployment in containerized environments.
+
+% ============================================================
+% INTRODUCTION
 % ============================================================
 \section{Introduction}
 
@@ -102,7 +147,7 @@ The system also introduced a \textbf{two-tier hybrid storage model}: Redis for h
 
 In production, this architecture serves an 89.3\% cache hit rate with just 1.38\,MB of Redis memory, enabling conversations that persist indefinitely across sessions, server restarts, and horizontal scaling events.
 
-The remainder of this paper follows the setup of this journey. Section~\ref{sec:architecture} presents the architecture, Section~\ref{sec:design} explains the key design decisions, Section~\ref{sec:implementation} details the implementation, Section~\ref{sec:evaluation} evaluates production performance, Section~\ref{sec:related} surveys related work, and Section~\ref{sec:conclusion} concludes with limitations and future directions.
+The remainder of this paper follows the setup of this journey. Section~\ref{sec:related} surveys related work, Section~\ref{sec:architecture} presents the architecture, Section~\ref{sec:design} explains the key design decisions, Section~\ref{sec:implementation} details the implementation, Section~\ref{sec:evaluation} evaluates production performance, and Section~\ref{sec:conclusion} concludes with limitations and future directions.
 
 % ============================================================
 % II. ARCHITECTURE
@@ -535,52 +580,7 @@ To understand each layer's contribution, we analyzed the production key distribu
 \end{itemize}
 
 % ============================================================
-% VI. RELATED WORK
-% ============================================================
-\section{Related Work}
-\label{sec:related}
-
-Table~\ref{tab:related} summarizes the landscape of existing tools and how our system differs. No single prior system addresses all three concerns (session persistence, semantic deduplication, embedding reuse) in a unified, lightweight package.
-
-\begin{table}[h]
-\centering
-\caption{Feature comparison with existing systems}
-\label{tab:related}
-{\scriptsize
-\begin{tabular}{@{}lccccc@{}}
-\toprule
-& \rotatebox{60}{\textbf{Session persist.}} & \rotatebox{60}{\textbf{Disk archival}} & \rotatebox{60}{\textbf{Semantic dedup}} & \rotatebox{60}{\textbf{Embed. reuse}} & \rotatebox{60}{\textbf{Redis-only}} \\
-\midrule
-LangChain~\cite{langchain2023} & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-LlamaIndex~\cite{llamaindex2023} & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-GPTCache~\cite{gptcache2023} & \ding{55} & \ding{55} & \ding{51} & \ding{55} & \ding{55} \\
-MemGPT~\cite{memgpt2023} & \ding{51} & \ding{51} & \ding{55} & \ding{55} & \ding{55} \\
-Sem.\ Kernel~\cite{semantic_kernel2023} & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{51} \\
-\midrule
-\textbf{Ours} & \ding{51} & \ding{51} & \ding{51} & \ding{51} & \ding{51} \\
-\bottomrule
-\end{tabular}}
-\end{table}
-
-\textbf{Conversation memory in LLM frameworks.}
-LangChain~\cite{langchain2023} provides several memory modules---buffer, summary, and windowed variants---that maintain conversation state for LLM chains. These operate in-process and do not persist across restarts or scale across replicas. LlamaIndex~\cite{llamaindex2023} offers similar in-memory chat stores. Our system differs by providing Redis-backed persistence with automatic disk archival, enabling shared state across horizontally scaled application instances.
-
-\textbf{Semantic caching for LLMs.}
-GPTCache~\cite{gptcache2023} is the closest prior work to our semantic query cache layer. It intercepts LLM calls, computes embeddings for queries, and returns cached responses when similarity exceeds a threshold. GPTCache supports multiple embedding backends and vector stores (FAISS, Milvus, etc.). Our design differs in three significant ways: (1)~GPTCache is a \emph{global} cache with no per-session isolation---in a multi-user search assistant, this would leak responses across users. Our cache is scoped per-session by design. (2)~GPTCache requires a separate vector database (FAISS, Milvus, or Qdrant) for similarity search, adding operational complexity. Our system stores embeddings directly in Redis as JSON arrays, requiring no additional infrastructure. (3)~GPTCache addresses only the semantic caching concern. It does not provide session context management, disk archival, or cross-session embedding reuse. These are the other two layers that, in our experience, account for the majority of compute savings.
-
-We did not benchmark GPTCache directly against our system because the two are not drop-in replacements: GPTCache is a middleware that wraps LLM calls, while our system is an integrated caching layer that manages sessions, context, and embeddings as a unified concern. A meaningful comparison would require building equivalent session management and embedding reuse on top of GPTCache, which would effectively recreate our architecture.
-
-\textbf{Redis as a caching layer.}
-Redis is widely used as an LLM response cache. Frameworks like Semantic Kernel~\cite{semantic_kernel2023} and Haystack~\cite{haystack2023} support Redis as a cache backend. However, these typically use Redis as a flat key-value store. Our system uses three separate Redis logical databases with distinct TTL profiles and data formats, and adds the hybrid hot/cold tier with disk overflow---a pattern not found in existing frameworks.
-
-\textbf{Conversation compression and archival.}
-MemGPT~\cite{memgpt2023} addresses the context window limitation by paging conversation history between a main context and an external storage tier, analogous to virtual memory. Our approach is similar in spirit: the hot Redis window serves as ``main memory'' and the Huffman-compressed disk archive as ``swap.'' However, MemGPT focuses on autonomous LLM-driven memory management (the LLM decides what to page in/out), while our system uses deterministic LRU eviction with fixed window sizes---simpler to reason about and debug in production.
-
-\textbf{Data compression for chat.}
-Standard approaches use gzip or lz4 for compressing stored conversations. Our use of canonical Huffman coding is motivated by the small payload sizes typical of conversation archives ($<$10\,KB in 90\% of cases), where dictionary-based compressors have proportionally higher overhead. As shown in Table~\ref{tab:compression_comparison}, Huffman outperforms lz4 and approaches zlib within 5--10 percentage points at these sizes, while requiring zero native dependencies---simplifying deployment in containerized environments.
-
-% ============================================================
-% VII. CONCLUSION
+% CONCLUSION
 % ============================================================
 \section{Conclusion}
 \label{sec:conclusion}
@@ -598,9 +598,7 @@ The caching architecture that grew out of those challenges now powers every conv
 
 The key insight is that forever-continuous conversations---sessions that can span hours, days, or weeks without losing context---are not a feature of the LLM itself, but of the infrastructure around it. By combining a bounded hot window with unbounded cold storage, aggressive semantic deduplication, and cross-session embedding reuse, we built a system where conversation length is no longer a constraint. Users can return to a session days later and pick up exactly where they left off, with full history available for semantic retrieval.
 
-Our evaluation is based on a single production deployment on one hardware configuration; the reported hit rates and latency numbers are representative of our workload but may vary under different query distributions or concurrency patterns. The semantic cache uses brute-force cosine similarity ($O(n)$, $n \leq 50$), which suffices at current scale but would require a vector index for significantly larger deployments. The pure-Python Huffman codec trades throughput (${\sim}$800\,KB/s) for zero native dependencies---acceptable for typical conversation archives under 10\,KB, though a C extension would be warranted for megabyte-scale payloads. Additionally, conversation archives are compressed but not encrypted at rest; deployments handling sensitive data should layer filesystem-level or application-level encryption.
-
-\textbf{Future work.} Potential improvements include: (1)~an optional native Huffman extension for higher throughput on large archives; (2)~pluggable vector databases (FAISS, Chroma) for the semantic cache similarity search; (3)~adaptive TTL policies that learn optimal cache lifetimes from observed query patterns; and (4)~cross-session knowledge transfer, where insights from one conversation can inform responses in another.
+Our evaluation is based on a single production deployment on one hardware configuration; the reported hit rates and latency numbers are representative of our workload but may vary under different query distributions or concurrency patterns. The semantic cache uses brute-force cosine similarity ($O(n)$, $n \leq 50$), which suffices at current scale but would require a vector index for significantly larger deployments. The pure-Python Huffman codec trades throughput (${\sim}$800\,KB/s) for zero native dependencies---acceptable for typical conversation archives under 10\,KB, though a C extension would be warranted for megabyte-scale payloads. Conversation archives are compressed but not encrypted at rest; deployments handling sensitive data should layer filesystem-level or application-level encryption. Looking ahead, potential improvements include an optional native Huffman extension for larger archives, pluggable vector databases (FAISS, Chroma) for the semantic cache, adaptive TTL policies that learn optimal cache lifetimes from observed query patterns, and cross-session knowledge transfer where insights from one conversation can inform responses in another.
 
 % ============================================================
 % LICENSE
