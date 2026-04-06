@@ -601,13 +601,6 @@ The key insight is that forever-continuous conversations---sessions that can spa
 Our evaluation is based on a single production deployment on one hardware configuration; the reported hit rates and latency numbers are representative of our workload but may vary under different query distributions or concurrency patterns. The semantic cache uses brute-force cosine similarity ($O(n)$, $n \leq 50$), which suffices at current scale but would require a vector index for significantly larger deployments. The pure-Python Huffman codec trades throughput (${\sim}$800\,KB/s) for zero native dependencies---acceptable for typical conversation archives under 10\,KB, though a C extension would be warranted for megabyte-scale payloads. Conversation archives are compressed but not encrypted at rest; deployments handling sensitive data should layer filesystem-level or application-level encryption. Looking ahead, potential improvements include an optional native Huffman extension for larger archives, pluggable vector databases (FAISS, Chroma) for the semantic cache, adaptive TTL policies that learn optimal cache lifetimes from observed query patterns, and cross-session knowledge transfer where insights from one conversation can inform responses in another.
 
 % ============================================================
-% LICENSE
-% ============================================================
-\vspace{0.5em}
-\noindent\rule{\columnwidth}{0.4pt}
-{\footnotesize \textbf{License.} This paper is licensed under \href{https://creativecommons.org/licenses/by-nc-nd/4.0/}{CC BY-NC-ND 4.0}. You may share this work with attribution, but you may not modify it or use it commercially. The accompanying software is separately licensed under MIT. \textcopyright~2026 Ayushman Bhattacharya.}
-
-% ============================================================
 % REFERENCES
 % ============================================================
 \begin{thebibliography}{10}
