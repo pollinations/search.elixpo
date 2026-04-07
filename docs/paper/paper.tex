@@ -418,7 +418,6 @@ Each session's disk archive is a single \texttt{.huff} file consisting of two ne
 
 \begin{figure}[h]
 \centering
-\resizebox{\columnwidth}{!}{%
 \begin{tikzpicture}[
     field/.style={draw, minimum height=0.55cm, font=\tiny, align=center, inner sep=2pt},
     app/.style={field, fill=orange!15, draw=orange!50},
@@ -427,42 +426,24 @@ Each session's disk archive is a single \texttt{.huff} file consisting of two ne
     lbl/.style={font=\tiny\bfseries, text=gray},
 ]
 % Application header (24 bytes fixed)
-\node[app, minimum width=1.8cm] (a0) at (0,0) {\texttt{"CAv1"}\\4\,B magic};
-\node[app, minimum width=2.4cm, right=0pt of a0] (a1) {Created\\8\,B (f64)};
-\node[app, minimum width=2.4cm, right=0pt of a1] (a2) {Modified\\8\,B (f64)};
-\node[app, minimum width=1.8cm, right=0pt of a2] (a3) {Turns\\4\,B (u32)};
+\node[app, minimum width=1.6cm] (a0) at (0,0) {\texttt{CAv1}\\4\,B};
+\node[app, minimum width=1.8cm, right=0pt of a0] (a1) {Created\\8\,B};
+\node[app, minimum width=1.8cm, right=0pt of a1] (a2) {Modified\\8\,B};
+\node[app, minimum width=1.4cm, right=0pt of a2] (a3) {Turns\\4\,B};
 
-% Label
-\node[lbl, above=0.15cm of a1.north east] {Application Header (24\,B fixed)};
+\node[lbl, above=0.1cm of a1.north east] {App Header (24\,B fixed)};
 
 % Huffman codec header (variable)
-\node[codec, minimum width=1.8cm, below=0.3cm of a0.south west, anchor=north west] (h0) {\texttt{"HCv1"}\\4\,B magic};
-\node[codec, minimum width=1.8cm, right=0pt of h0] (h1) {Data len\\4\,B (u32)};
-\node[codec, minimum width=1.6cm, right=0pt of h1] (h2) {$n$ syms\\2\,B (u16)};
-\node[codec, minimum width=2.2cm, right=0pt of h2] (h3) {Symbol table\\$2n$\,B pairs};
+\node[codec, minimum width=1.6cm, below=0.25cm of a0.south west, anchor=north west] (h0) {\texttt{HCv1}\\4\,B};
+\node[codec, minimum width=1.4cm, right=0pt of h0] (h1) {Len\\4\,B};
+\node[codec, minimum width=1.2cm, right=0pt of h1] (h2) {$n$\\2\,B};
+\node[codec, minimum width=2.4cm, right=0pt of h2] (h3) {Symbols\\$2n$\,B};
 
-% Label
-\node[lbl, left=0.1cm of h0] {Codec\\Header};
+% Codec data row
+\node[codec, minimum width=1.4cm, below=0.25cm of h0.south west, anchor=north west] (h4) {Pad\\4\,B};
+\node[data, minimum width=5.2cm, right=0pt of h4] (payload) {Compressed Bitstream};
 
-% Codec header continued + data
-\node[codec, minimum width=1.8cm, below=0.3cm of h0.south west, anchor=north west] (h4) {Pad bits\\4\,B (u32)};
-\node[data, minimum width=6.6cm, right=0pt of h4] (payload) {Compressed Bitstream (variable length)};
-
-% Label
-\node[lbl, left=0.1cm of h4] {Codec\\Data};
-
-% Brace for Huffman payload
-\draw[decorate, decoration={brace, amplitude=5pt, mirror}, thick, blue!40]
-    ([xshift=-2pt, yshift=-2pt]h0.south west) -- ([xshift=-2pt, yshift=2pt]h0.north west |- a3.south west)
-    node[midway, left=6pt, font=\tiny\itshape, text=blue!60, align=right] {Huffman\\payload\\(from byte 24)};
-
-% Brace for app header
-\draw[decorate, decoration={brace, amplitude=5pt}, thick, orange!50]
-    ([xshift=-2pt, yshift=2pt]a0.north west) -- ([xshift=2pt, yshift=2pt]a3.north east)
-    node[midway, above=6pt, font=\tiny\itshape, text=orange!70] {scannable without decompression};
-
-\end{tikzpicture}%
-}
+\end{tikzpicture}
 \caption{Binary layout of a \texttt{.huff} archive file. The 24-byte application header (orange) stores session metadata readable in a single \texttt{read(24)} call---critical for the TTL cleanup daemon. The Huffman codec header (blue) stores the symbol table needed for decompression. The compressed bitstream (green) contains the actual conversation JSON.}
 \label{fig:huff_format}
 \end{figure}
