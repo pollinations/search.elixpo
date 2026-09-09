@@ -4,6 +4,7 @@ import random
 import asyncio
 import requests
 import os
+import uuid
 from datetime import datetime, timezone
 from loguru import logger
 from commons.environment import load_local_environment
@@ -24,7 +25,8 @@ from pipeline.helpers import (
 )
 from pipeline.utils import format_sse
 from sessions.conversation_cache import ConversationCacheManager
-from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache, SessionContextWindow
+from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache
+from sessions.ledger import LedgerSessionContext
 
 load_local_environment()
 
@@ -471,8 +473,10 @@ async def _run_deep_search_pipeline(
     event_id: str,
     session_id: str,
     emit_event,
+    ledger_request_id: str = None,
 ):
     logger.info(f"[DeepSearch] Starting deep search for: '{user_query[:80]}'")
+    ledger_request_id = ledger_request_id or event_id or uuid.uuid4().hex
 
     current_utc_time = datetime.now(timezone.utc)
     headers = {
@@ -490,10 +494,14 @@ async def _run_deep_search_pipeline(
     session_context = None
     if session_id:
         try:
-            session_context = SessionContextWindow(session_id=session_id)
-            session_context.add_message(role="user", content=user_query)
+            session_context = LedgerSessionContext(session_id=session_id)
+            session_context.add_message(
+                role="user",
+                content=user_query,
+                metadata={"request_id": f"{ledger_request_id}:user"},
+            )
         except Exception as e:
-            logger.warning(f"[DeepSearch] SessionContextWindow init failed: {e}")
+            logger.warning(f"[DeepSearch] session ledger init failed: {e}")
 
     memoized_results = {
         "timezone_info": {},
@@ -693,6 +701,8 @@ async def _run_deep_search_pipeline(
             memoized_results["final_response"] = combined_content
             cache_metadata = {
                 "sources": unique_sources,
+                "evidence_refs": unique_sources,
+                "artifact_refs": memoized_results.get("generated_pdfs", [])[:10],
                 "deep_search": True,
                 "sub_queries": len(all_sub_results),
             }
@@ -711,7 +721,14 @@ async def _run_deep_search_pipeline(
                 )
 
             if session_context:
-                session_context.add_message(role="assistant", content=combined_content)
+                session_context.add_message(
+                    role="assistant",
+                    content=combined_content,
+                    metadata={
+                        "request_id": f"{ledger_request_id}:assistant",
+                        **cache_metadata,
+                    },
+                )
                 memoized_results["_assistant_response_saved"] = True
     except Exception as e:
         logger.warning(f"[DeepSearch] Cache save failed: {e}")
