@@ -696,7 +696,9 @@ async def _run_deep_search_pipeline(
     # ── Clean sources: filter out ad tracking / redirect URLs ──
     unique_sources = sorted(set(s for s in all_collected_sources if _is_clean_url(s)))[:8]
 
-    # Append sources
+    # Append sources to the stream and retain the same verified appendix for
+    # the canonical document/cache payload.
+    source_block = ""
     if unique_sources:
         source_block = "\n\n---\n**Sources:**\n"
         for i, src in enumerate(unique_sources, 1):
@@ -706,6 +708,7 @@ async def _run_deep_search_pipeline(
         else:
             yield source_block
 
+    final_response = ""
     if len(all_sub_results) > 1:
         # Only attempt synthesis if total content isn't already too large
         _total_chars = sum(len(r[1]) for r in all_sub_results)
@@ -737,14 +740,30 @@ async def _run_deep_search_pipeline(
             except Exception as e:
                 logger.error(f"[DeepSearch] Final synthesis failed: {e}", exc_info=True)
 
+    # The global synthesis is the canonical report. Raw per-thread content is
+    # only a fallback when no global synthesis was needed or could be produced.
+    research_content = "\n\n".join(r[1] for r in all_sub_results)
+    combined_content = final_response or research_content
+    document_content = f"{combined_content}{source_block}" if combined_content else None
+
+    # Never turn metadata-only emergency summaries into a document. A failed
+    # synthesis should remain a failed export instead of producing a polished-
+    # looking PDF with no substantive content.
+    status_only = bool(research_content) and all(
+        re.fullmatch(r"Research on '.+' gathered \d+ sources\.?", result[1].strip())
+        for result in all_sub_results
+    )
+    if status_only and not final_response:
+        document_content = None
+        logger.warning("[DeepSearch] PDF blocked: only source-count status summaries available")
+
     # Complete any requested artifact from the researched content before DONE.
     # The shared finalizer determines whether this request asks for an export;
     # this path does not special-case a subject, field name, or prompt shape.
-    combined_content = "\n\n".join(r[1] for r in all_sub_results) if all_sub_results else None
-    if combined_content:
+    if document_content:
         try:
             pdf_url = await auto_generate_pdf(
-                combined_content,
+                document_content,
                 request_intent or user_query,
                 memoized_results,
                 event_id,
@@ -763,8 +782,8 @@ async def _run_deep_search_pipeline(
 
     # ── Save to caches (fire-and-forget, never block DONE) ──
     try:
-        if combined_content:
-            memoized_results["final_response"] = combined_content
+        if document_content:
+            memoized_results["final_response"] = document_content
             cache_metadata = {
                 "sources": unique_sources,
                 "evidence_refs": unique_sources,
@@ -781,7 +800,7 @@ async def _run_deep_search_pipeline(
             if conversation_cache is not None:
                 conversation_cache.add_to_cache(
                     query=user_query,
-                    response=combined_content,
+                    response=document_content,
                     metadata=cache_metadata,
                     query_embedding=_cache_embedding,
                 )
@@ -789,7 +808,7 @@ async def _run_deep_search_pipeline(
             if session_context:
                 session_context.add_message(
                     role="assistant",
-                    content=combined_content,
+                    content=document_content,
                     metadata={
                         "request_id": f"{ledger_request_id}:assistant",
                         **cache_metadata,

@@ -146,6 +146,17 @@ def test_pdf_title_comes_from_subject_not_conversational_preamble():
     assert derive_pdf_title(query, content) == "Latest Weather Forecast For Kolkata For Next 7 Days"
 
 
+def test_pdf_title_never_exposes_internal_clarification_envelope():
+    query = (
+        "Compare several options and create a PDF\n\n"
+        "Clarified requirements: request_details: Compare PostgreSQL, MySQL, and MongoDB "
+        "for a high-traffic application"
+    )
+    assert derive_pdf_title(query, "No document heading") == (
+        "Compare PostgreSQL, MySQL, And MongoDB For A High-Traffic Application"
+    )
+
+
 def test_local_date_anchor_must_be_present_in_range():
     info = {"Kolkata": "The current time in Kolkata is 12:30 AM on 2026-09-02"}
     query = "weather in Kolkata for next 7 days"
@@ -250,3 +261,57 @@ def test_deep_research_rejects_source_free_output_before_stream_or_export():
     assert "Confident but unsupported answer" not in output
     assert "enough verifiable sources" in output
     assert output.endswith("<TASK>DONE</TASK>")
+
+
+def test_deep_research_exports_canonical_synthesis_with_source_appendix():
+    import pipeline.deep_search as deep_search
+
+    canonical = (
+        "# Database Comparison for High-Traffic Applications\n\n"
+        "## Executive Summary\n\nA complete, polished comparison."
+    )
+
+    async def run():
+        with (
+            mock.patch.object(
+                deep_search,
+                "_decompose_query_with_llm",
+                new=mock.AsyncMock(return_value=["performance", "operations"]),
+            ),
+            mock.patch.object(
+                deep_search,
+                "_execute_deep_search_sub_query",
+                new=mock.AsyncMock(side_effect=[
+                    ("Raw performance notes", ["https://example.test/performance"], []),
+                    ("Raw operations notes", ["https://example.test/operations"], []),
+                ]),
+            ),
+            mock.patch.object(
+                deep_search,
+                "_deep_search_final_synthesis",
+                new=mock.AsyncMock(return_value=canonical),
+            ),
+            mock.patch.object(
+                deep_search,
+                "auto_generate_pdf",
+                new=mock.AsyncMock(return_value="https://example.test/report.pdf"),
+            ) as generate,
+        ):
+            return [
+                chunk
+                async for chunk in deep_search._run_deep_search_pipeline(
+                    user_query="Compare the databases",
+                    user_image=None,
+                    event_id="canonical-report",
+                    session_id=None,
+                    emit_event=lambda _kind, content: content,
+                    request_intent="Compare the databases and create a PDF",
+                )
+            ], generate
+
+    _chunks, generate = asyncio.run(run())
+    exported = generate.await_args.args[0]
+    assert exported.startswith(canonical)
+    assert "**Sources:**" in exported
+    assert "https://example.test/performance" in exported
+    assert "Raw performance notes" not in exported

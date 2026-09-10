@@ -96,12 +96,35 @@ def derive_pdf_title(query: str, content: str) -> str:
         candidate = heading.group(1).strip(" *_`#")
         if candidate and not re.match(r"^(?:got it|here.?s|i(?:.ll| will)|export_to_pdf)\b", candidate, re.I):
             return candidate[:120]
+    request_text = query or ""
+    if re.search(r"\bClarified requirements\s*:", request_text, re.I):
+        request_text = re.split(
+            r"\bClarified requirements\s*:", request_text, maxsplit=1, flags=re.I,
+        )[1].strip()
+        request_text = re.sub(
+            r"(?:^|;\s*)[a-z0-9_.-]+\s*:\s*", " ", request_text,
+            flags=re.I,
+        ).strip()
     candidate = re.sub(
         r"^\s*(?:please\s+)?(?:give|make|create|generate|export|download)\s+(?:me\s+)?(?:a\s+)?pdf\s+(?:of|about|for)\s+",
-        "", query or "", flags=re.IGNORECASE,
+        "", request_text, flags=re.IGNORECASE,
 ).strip(" .?!")
+    candidate = re.sub(
+        r"\b(?:and\s+)?(?:create|generate|export|make|provide)\s+(?:me\s+)?(?:a\s+)?pdf\b.*$",
+        "", candidate, flags=re.IGNORECASE,
+    ).strip(" .?!")
     candidate = re.sub(r"^the\s+", "", candidate, flags=re.IGNORECASE)
-    return (candidate or "OreoLook Report")[:120].title()
+    candidate = (candidate or "OreoLook Report")[:120]
+
+    def _title_token(match):
+        token = match.group(0)
+        # Preserve intentional casing in names such as PostgreSQL, MySQL, APIs,
+        # and brands while formatting the surrounding prose consistently.
+        if re.search(r"[A-Z]", token[1:]):
+            return token
+        return "-".join(part[:1].upper() + part[1:].lower() for part in token.split("-"))
+
+    return re.sub(r"\b[\w]+(?:-[\w]+)*\b", _title_token, candidate)
 
 
 def is_placeholder_or_fallback(content: str) -> bool:
