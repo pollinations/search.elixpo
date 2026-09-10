@@ -25,6 +25,7 @@ Export completed content without repeating research.
 - A successful export must return its stable download URL; after success, stop exporting.
 - Do not invent citations or expand source content.
 - Do not export without explicit user intent.
+- Never export a clarification question or any task whose required fields remain unresolved. Pending clarification is a hard runtime block, not a suggestion.
 - Preserve the text response if export fails.
 
 ## Runtime contract

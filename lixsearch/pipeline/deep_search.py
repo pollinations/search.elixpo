@@ -19,6 +19,7 @@ from pipeline.instruction import (
 )
 from pipeline.tools import tools
 from pipeline.optimized_tool_execution import optimized_tool_execution
+from pipeline.response_builder import auto_generate_pdf
 from pipeline.helpers import (
     _scrub_tool_names,
     _decompose_query_with_llm,
@@ -237,6 +238,23 @@ async def _execute_deep_search_sub_query(
         tool_calls = assistant_message.get("tool_calls")
 
         if not tool_calls:
+            # Deep research is not allowed to manufacture an answer from model
+            # memory. Give the model bounded chances to gather web evidence;
+            # the caller applies a second commit gate before any text reaches
+            # SSE, caches, or an artifact.
+            if not collected_sources and iteration < DEEP_SEARCH_MAX_ITERATIONS_PER_SUB:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "No verifiable web evidence has been collected yet. Use the available "
+                        "search and fetch tools now. Do not answer from memory or invent sources."
+                    ),
+                })
+                logger.warning(
+                    f"[DeepSearch:Sub{sub_query_index}] Iteration {iteration}: "
+                    "source-free answer rejected; requesting evidence"
+                )
+                continue
             final_content = assistant_message.get("content")
             logger.info(f"[DeepSearch:Sub{sub_query_index}] Iteration {iteration}: no tool calls, final content ready ({len(final_content or '')} chars)")
             break
@@ -474,6 +492,7 @@ async def _run_deep_search_pipeline(
     session_id: str,
     emit_event,
     ledger_request_id: str = None,
+    request_intent: str = None,
 ):
     logger.info(f"[DeepSearch] Starting deep search for: '{user_query[:80]}'")
     ledger_request_id = ledger_request_id or event_id or uuid.uuid4().hex
@@ -605,7 +624,16 @@ async def _run_deep_search_pipeline(
                 sq_response = _scrub_tool_names(sq_response)
                 # Strip reasoning leaks: remove everything before the first markdown heading or real content
                 sq_response = _strip_reasoning_leak(sq_response)
-            return sq_idx, sub_query, sq_response, sq_sources, sq_images
+            evidence_sources = list(dict.fromkeys(
+                source for source in (sq_sources or []) if _is_clean_url(source)
+            ))
+            if sq_response and not evidence_sources:
+                logger.warning(
+                    f"[DeepSearch] Sub-query {sq_idx} rejected by evidence commit gate: "
+                    "no clean sources"
+                )
+                sq_response = None
+            return sq_idx, sub_query, sq_response, evidence_sources, sq_images
         except asyncio.TimeoutError:
             logger.error(f"[DeepSearch] Sub-query {sq_idx} timed out after {DEEP_SEARCH_TIMEOUT_PER_SUB}s")
             return sq_idx, sub_query, None, [], []
@@ -649,6 +677,21 @@ async def _run_deep_search_pipeline(
             )
             if timeout_event:
                 yield timeout_event
+
+    if not all_sub_results:
+        failure = (
+            "I couldn’t gather enough verifiable sources to answer this reliably. "
+            "Please try again in a moment."
+        )
+        if event_id:
+            yield format_sse("RESPONSE", failure)
+        else:
+            yield failure
+        done_event = emit_event("INFO", "<TASK>DONE</TASK>")
+        if done_event:
+            yield done_event
+        logger.warning("[DeepSearch] Aborted: no source-backed research passed the commit gate")
+        return
 
     # ── Clean sources: filter out ad tracking / redirect URLs ──
     unique_sources = sorted(set(s for s in all_collected_sources if _is_clean_url(s)))[:8]
@@ -694,8 +737,31 @@ async def _run_deep_search_pipeline(
             except Exception as e:
                 logger.error(f"[DeepSearch] Final synthesis failed: {e}", exc_info=True)
 
-    # ── Save to caches (fire-and-forget, never block DONE) ──
+    # Complete any requested artifact from the researched content before DONE.
+    # The shared finalizer determines whether this request asks for an export;
+    # this path does not special-case a subject, field name, or prompt shape.
     combined_content = "\n\n".join(r[1] for r in all_sub_results) if all_sub_results else None
+    if combined_content:
+        try:
+            pdf_url = await auto_generate_pdf(
+                combined_content,
+                request_intent or user_query,
+                memoized_results,
+                event_id,
+            )
+            if pdf_url:
+                ready_event = emit_event("INFO", "<TASK>PDF ready for download</TASK>")
+                if ready_event:
+                    yield ready_event
+                link = f"\n\n---\n\n[Download PDF]({pdf_url})"
+                if event_id:
+                    yield format_sse("RESPONSE", link)
+                else:
+                    yield link
+        except Exception as e:
+            logger.error(f"[DeepSearch] PDF auto-generation failed: {e}")
+
+    # ── Save to caches (fire-and-forget, never block DONE) ──
     try:
         if combined_content:
             memoized_results["final_response"] = combined_content
