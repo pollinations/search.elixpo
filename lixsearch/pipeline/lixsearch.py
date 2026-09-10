@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
 from loguru import logger
-from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache, SessionContextWindow
+from ragService.semanticCacheRedis import SemanticCacheRedis as SemanticCache
 import random
 import requests
 import json
 import re
 from pipeline.tools import tools
 from sessions.conversation_cache import ConversationCacheManager
+from sessions.ledger import LedgerSessionContext
 
 import os
 from commons.environment import load_local_environment
@@ -47,6 +48,7 @@ from pipeline.response_builder import (
 from pipeline.deep_search import _run_deep_search_pipeline
 from functionCalls.getImagePrompt import describe_image, replyFromImage
 import asyncio
+import uuid
 
 load_local_environment()
 
@@ -237,6 +239,9 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
     status_tracker = SSEStatusTracker(emit_fn=emit_event, stale_threshold=10.0)
     semantic_cache = None
     memoized_results = {}
+    session_context = None
+    session_lock_token = None
+    ledger_request_id = event_id or uuid.uuid4().hex
 
     try:
         current_utc_time = datetime.now(timezone.utc)
@@ -260,17 +265,34 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
         }
 
         # --- Session context (skip for ephemeral — no history to load or persist) ---
-        session_context = None
         previous_messages = []
         if session_id and not is_ephemeral:
             try:
-                session_context = SessionContextWindow(session_id=session_id)
+                session_context = LedgerSessionContext(session_id=session_id)
+                session_lock_token = await asyncio.to_thread(session_context.ledger.acquire_lock)
+                if not session_lock_token:
+                    raise RuntimeError(f"session {session_id} is busy")
                 memoized_results["session_context"] = session_context
-                previous_messages = session_context.get_context()
-                session_context.add_message(role="user", content=user_query)
+                snapshot = await asyncio.to_thread(session_context.ledger.load_snapshot)
+                previous_messages = snapshot.messages
+                memoized_results["session_snapshot"] = snapshot
+                memoized_results["ledger_request_id"] = ledger_request_id
+                session_context.add_message(
+                    role="user",
+                    content=user_query,
+                    metadata={"request_id": f"{ledger_request_id}:user"},
+                )
                 logger.info(f"[Pipeline] Session {session_id}: {len(previous_messages)} hot messages")
-            except Exception:
+            except Exception as exc:
+                if session_context and session_lock_token:
+                    try:
+                        await asyncio.to_thread(session_context.ledger.release_lock, session_lock_token)
+                    except Exception:
+                        pass
+                    session_lock_token = None
                 session_context = None
+                logger.error(f"[Pipeline] Session ledger unavailable: {exc}")
+                raise
 
         # --- Conversation cache + Semantic cache (skip for ephemeral — no history) ---
         conversation_cache = None
@@ -431,9 +453,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     _injected_history += 1
         elif context_mode == "continuation" and session_id and session_context:
             try:
-                _prev = session_context.get_context()
-                if _prev and _prev[-1].get("role") == "user" and _prev[-1].get("content") == user_query:
-                    _prev = _prev[:-1]
+                _prev = previous_messages
                 _trimmed = []
                 for msg in reversed(_prev):
                     _content = msg.get("content", "")
@@ -801,6 +821,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 async for event in _run_deep_search_pipeline(
                     user_query=_dr_query, user_image=user_image,
                     event_id=event_id, session_id=session_id, emit_event=emit_event,
+                    ledger_request_id=ledger_request_id,
                 ):
                     yield event
                 return
@@ -1010,7 +1031,15 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         pass
                     if session_context:
                         try:
-                            session_context.add_message(role="assistant", content=final_message_content)
+                            session_context.add_message(
+                                role="assistant",
+                                content=final_message_content,
+                                metadata={
+                                    "request_id": f"{ledger_request_id}:assistant",
+                                    "evidence_refs": collected_sources[:5],
+                                    "artifact_refs": memoized_results.get("generated_pdfs", [])[:10],
+                                },
+                            )
                             memoized_results["_assistant_response_saved"] = True
                         except Exception:
                             pass
@@ -1130,6 +1159,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                     final_message_content += f"\n\n---\n\n[Download PDF]({_pdf_url})"
 
             # Assemble images and sources
+            memoized_results["collected_sources"] = collected_sources[:active_max_sources]
             response_parts = assemble_images(final_message_content, collected_images_from_web,
                                               collected_similar_images, image_only_mode, memoized_results)
             response_with_sources = append_sources(response_parts, collected_sources)
@@ -1198,7 +1228,15 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                 try:
                     ctx = memoized_results["session_context"]
                     if memoized_results.get("final_response") and not memoized_results.get("_assistant_response_saved"):
-                        ctx.add_message(role="assistant", content=memoized_results["final_response"])
+                        ctx.add_message(
+                            role="assistant",
+                            content=memoized_results["final_response"],
+                            metadata={
+                                "request_id": f"{ledger_request_id}:assistant",
+                                "evidence_refs": memoized_results.get("collected_sources", [])[:5],
+                                "artifact_refs": memoized_results.get("generated_pdfs", [])[:10],
+                            },
+                        )
                 except Exception:
                     pass
 
@@ -1209,6 +1247,12 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
                         conversation_cache.save_to_disk(session_id=session_id)
                 except Exception:
                     pass
+
+        if session_context and session_lock_token:
+            try:
+                await asyncio.to_thread(session_context.ledger.release_lock, session_lock_token)
+            except Exception as exc:
+                logger.warning(f"[Pipeline] Failed to release session lock: {exc}")
 
         # Publish latency metrics to Redis for the monitor service
         try:

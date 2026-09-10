@@ -286,7 +286,20 @@ async def save_to_caches(user_query, final_content, collected_sources, tool_call
 
     if session_context:
         try:
-            session_context.add_message(role="assistant", content=final_content)
+            request_id = memoized_results.get("ledger_request_id")
+            metadata = {
+                "sources": collected_sources[:5],
+                "evidence_refs": collected_sources[:5],
+                "artifact_refs": (
+                    memoized_results.get("generated_pdfs", [])
+                    + memoized_results.get("generated_images", [])
+                )[:10],
+                "tool_calls": tool_call_count,
+                "iteration": current_iteration,
+            }
+            if request_id:
+                metadata["request_id"] = f"{request_id}:assistant"
+            session_context.add_message(role="assistant", content=final_content, metadata=metadata)
             memoized_results["_assistant_response_saved"] = True
         except Exception as e:
             logger.warning(f"[Pipeline] Failed to store reply in session: {e}")
