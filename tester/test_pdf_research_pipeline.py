@@ -335,3 +335,34 @@ def test_deep_research_exports_canonical_synthesis_with_source_appendix():
     assert "**Sources:**" in exported
     assert "https://example.test/performance" in exported
     assert "Raw performance notes" not in exported
+
+
+def test_forced_subquery_synthesis_flattens_tool_protocol_into_evidence():
+    import pipeline.deep_search as deep_search
+
+    transcript = [
+        {"role": "system", "content": "research"},
+        {"role": "user", "content": "investigate"},
+        {
+            "role": "assistant",
+            "content": "Gathering information...",
+            "tool_calls": [{"id": "call-1", "type": "function"}],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call-1",
+            "name": "web_search",
+            "content": "Verified database evidence with https://example.test/source",
+        },
+    ]
+
+    messages = deep_search._build_evidence_synthesis_messages(
+        transcript,
+        "Compare the database options",
+    )
+
+    assert [message["role"] for message in messages] == ["system", "user"]
+    assert all("tool_calls" not in message for message in messages)
+    assert all("tool_call_id" not in message for message in messages)
+    assert "Verified database evidence" in messages[1]["content"]
+    assert "Compare the database options" in messages[1]["content"]

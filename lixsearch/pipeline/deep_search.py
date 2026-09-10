@@ -100,6 +100,50 @@ def _strip_reasoning_leak(text: str) -> str:
     return result
 
 
+def _build_evidence_synthesis_messages(
+    messages: list,
+    sub_query: str,
+) -> list:
+    """Build a valid, tool-free handoff for forced sub-query synthesis.
+
+    The research transcript may contain assistant ``tool_calls`` followed by
+    several ``tool`` messages. Slicing that transcript can orphan either side
+    of the OpenAI tool-call pair, which providers reject with HTTP 400. The
+    synthesis pass only needs the gathered evidence, so flatten it into one
+    ordinary user message instead of replaying protocol state.
+    """
+    evidence_parts = []
+    for message in messages:
+        if message.get("role") != "tool":
+            continue
+        content = str(message.get("content") or "").strip()
+        if content and content != "No result":
+            evidence_parts.append(content[:1200])
+
+    evidence = "\n\n".join(evidence_parts)
+    if len(evidence) > 6000:
+        evidence = evidence[:6000]
+
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are OreoLook's research writer. Produce only the final, "
+                "user-facing, sourced answer. Use only the supplied evidence; "
+                "never mention tools, internal processing, or missing protocol state."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Research question: {sub_query}\n\n"
+                f"Gathered evidence:\n{evidence or 'No usable evidence was returned.'}\n\n"
+                f"{synthesis_instruction(sub_query, is_detailed=True)}"
+            ),
+        },
+    ]
+
+
 async def _evaluate_deep_search_need(query: str, headers: dict) -> bool:
     gating_messages = [
         {"role": "system", "content": "You are a query complexity evaluator. Return only JSON."},
@@ -370,11 +414,7 @@ async def _execute_deep_search_sub_query(
 
     if not final_content:
         logger.info(f"[DeepSearch:Sub{sub_query_index}] Forcing synthesis after {DEEP_SEARCH_MAX_ITERATIONS_PER_SUB} iterations")
-        synthesis_messages = messages[:2] + messages[-4:] if len(messages) > 6 else messages
-        synthesis_messages.append({
-            "role": "user",
-            "content": synthesis_instruction(sub_query, is_detailed=True),
-        })
+        synthesis_messages = _build_evidence_synthesis_messages(messages, sub_query)
         try:
             resp = await asyncio.wait_for(
                 asyncio.to_thread(
