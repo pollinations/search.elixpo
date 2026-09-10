@@ -7,6 +7,7 @@ from loguru import logger
 
 from pipeline.config import POLLINATIONS_ENDPOINT, LLM_MODEL, LOG_MESSAGE_PREVIEW_TRUNCATE
 from pipeline.helpers import _scrub_tool_names, sanitize_final_response
+from sessions.clarification import artifacts_blocked
 from pipeline.utils import format_sse
 
 MODEL = LLM_MODEL
@@ -151,7 +152,7 @@ async def auto_generate_pdf(final_content, query_lower, memoized_results, event_
     _already_has_pdf = bool(memoized_results.get("generated_pdfs"))
     if _already_has_pdf or memoized_results.get("pdf_export_attempted"):
         return None
-    if memoized_results.get("suppress_pdf_export"):
+    if memoized_results.get("suppress_pdf_export") or artifacts_blocked(memoized_results):
         return None
     if not any(kw in query_lower.lower() for kw in ("pdf", "export", "save as", "document")):
         return None

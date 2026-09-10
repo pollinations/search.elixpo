@@ -101,7 +101,7 @@ CRITICAL RULES:
 
 LENGTH: {length_guide}
 
-FORMAT: Markdown. Start with the answer. Cite as [Title](URL). Never mention tools, cache, RAG, or internal processes.
+FORMAT: Markdown. Start with the answer. Cite as [Title](URL). Never mention tools, cache, RAG, or internal processes. Never claim that a listed capability is unavailable; perform it, or report only a real runtime failure after it occurs.
 
 CONTEXT:
 {rag_context}

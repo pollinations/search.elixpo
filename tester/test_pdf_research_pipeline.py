@@ -158,3 +158,95 @@ def test_explicit_tomorrow_shifts_generic_local_anchor():
     query = "make a three day itinerary starting tomorrow"
     assert missing_local_date_anchor(query, "## September 2nd 2026", info) == "2026-09-03"
     assert missing_local_date_anchor(query, "## September 3rd 2026", info) is None
+
+
+def test_deep_research_completes_requested_artifact_before_done():
+    import pipeline.deep_search as deep_search
+
+    research_query = "Compare the candidate storage engines"
+    original_request = "Research the candidate storage engines and provide a PDF"
+    pdf_url = "https://search.elixpo.com/generated/storage-engines.pdf"
+
+    async def run():
+        with (
+            mock.patch.object(
+                deep_search,
+                "_decompose_query_with_llm",
+                new=mock.AsyncMock(return_value=["orbital materials"]),
+            ),
+            mock.patch.object(
+                deep_search,
+                "_execute_deep_search_sub_query",
+                new=mock.AsyncMock(
+                    return_value=(
+                        "# Findings\n\n" + "Grounded evidence. " * 12,
+                        ["https://example.test/evidence"],
+                        [],
+                    )
+                ),
+            ),
+            mock.patch.object(
+                deep_search,
+                "auto_generate_pdf",
+                new=mock.AsyncMock(return_value=pdf_url),
+            ) as generate,
+        ):
+            chunks = [
+                chunk
+                async for chunk in deep_search._run_deep_search_pipeline(
+                    user_query=research_query,
+                    user_image=None,
+                    event_id="deep-artifact",
+                    session_id=None,
+                    emit_event=lambda _kind, content: content,
+                    request_intent=original_request,
+                )
+            ]
+            generate.assert_awaited_once()
+            assert generate.await_args.args[1] == original_request
+            return chunks
+
+    chunks = asyncio.run(run())
+    output = "".join(chunks)
+    assert pdf_url in output
+    assert output.index("PDF ready for download") < output.index("<TASK>DONE</TASK>")
+
+
+def test_deep_research_rejects_source_free_output_before_stream_or_export():
+    import pipeline.deep_search as deep_search
+
+    async def run():
+        with (
+            mock.patch.object(
+                deep_search,
+                "_decompose_query_with_llm",
+                new=mock.AsyncMock(return_value=["unverified thread"]),
+            ),
+            mock.patch.object(
+                deep_search,
+                "_execute_deep_search_sub_query",
+                new=mock.AsyncMock(return_value=("Confident but unsupported answer", [], [])),
+            ),
+            mock.patch.object(
+                deep_search,
+                "auto_generate_pdf",
+                new=mock.AsyncMock(),
+            ) as generate,
+        ):
+            chunks = [
+                chunk
+                async for chunk in deep_search._run_deep_search_pipeline(
+                    user_query="Research a subject and provide a PDF",
+                    user_image=None,
+                    event_id="deep-no-evidence",
+                    session_id=None,
+                    emit_event=lambda _kind, content: content,
+                )
+            ]
+            generate.assert_not_awaited()
+            return chunks
+
+    output = "".join(asyncio.run(run()))
+    assert "Confident but unsupported answer" not in output
+    assert "enough verifiable sources" in output
+    assert output.endswith("<TASK>DONE</TASK>")

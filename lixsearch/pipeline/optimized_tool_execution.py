@@ -18,6 +18,7 @@ from pipeline.config import MAX_IMAGES_TO_INCLUDE, LOG_MESSAGE_QUERY_TRUNCATE, L
 from pipeline.formalOptimization import ConstrainedOptimizer
 from commons.robustnessFramework import ToolOutputSanitizer, SanitizationPolicy
 from urllib.parse import urlparse
+from sessions.clarification import artifacts_blocked
 
 
 def _display_url(url: str, max_len: int = 40) -> str:
@@ -35,6 +36,10 @@ def _display_url(url: str, max_len: int = 40) -> str:
 
 async def optimized_tool_execution(function_name: str, function_args: dict, memoized_results: dict, emit_event_func):
     try:
+        if artifacts_blocked(memoized_results):
+            logger.warning(f"[Pipeline] Blocked tool while clarification is pending: {function_name}")
+            yield "[BLOCKED] Required clarification is still pending; no tool was executed."
+            return
         VALID_TOOL_NAMES = {tool["function"]["name"] for tool in tools}
         if function_name not in VALID_TOOL_NAMES:
             error_msg = f"Tool '{function_name}' is not available. Valid tools are: {', '.join(sorted(VALID_TOOL_NAMES))}"
