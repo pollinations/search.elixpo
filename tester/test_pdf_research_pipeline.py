@@ -85,6 +85,26 @@ def test_runtime_does_not_export_error_text_after_failed_tool_export():
 
     asyncio.run(run())
 
+
+def test_runtime_does_not_export_uncommitted_clarification_draft():
+    memo = {"generated_pdfs": []}
+    draft = (
+        "Got it! I am preparing the report.\n\n"
+        "One quick clarification: which scope should the report use?"
+    )
+
+    async def run():
+        with mock.patch(
+            "functionCalls.generatePDF.create_pdf_from_content",
+            new=mock.AsyncMock(),
+        ) as create:
+            result = await auto_generate_pdf(draft, "create a PDF", memo, "event")
+            assert result is None
+            assert memo["pdf_export_blocked"] == "uncommitted_document"
+            create.assert_not_awaited()
+
+    asyncio.run(run())
+
 def test_followup_pdf_exports_trusted_prior_answer_instead_of_model_rewrite():
     prior = "# Grounded space discovery\n\n" + ("Evidence with citation. " * 12)
     memo = {"generated_pdfs": [], "continuation_pdf_content": prior}

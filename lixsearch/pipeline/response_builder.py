@@ -140,6 +140,29 @@ def is_placeholder_or_fallback(content: str) -> bool:
     ))
 
 
+def is_exportable_pdf_document(content: str) -> bool:
+    """Reject model drafts that have not crossed the document commit boundary."""
+    value = normalize_pdf_document(content)
+    if not value or len(value) <= 100 or is_placeholder_or_fallback(value):
+        return False
+    opening = value[:700]
+    if re.match(
+        r"^\s*(?:got it|sure|absolutely|okay|alright|i(?:'ll| will)|let(?:'s| us))\b",
+        opening,
+        re.IGNORECASE,
+    ):
+        return False
+    if re.search(
+        r"\b(?:quick\s+)?clarification\b|\bcould you (?:please )?(?:specify|clarify)\b",
+        opening,
+        re.IGNORECASE,
+    ):
+        return False
+    if re.search(r"\[(?:title|source|citation)\]\((?:url|link)\)", value, re.IGNORECASE):
+        return False
+    return True
+
+
 async def try_image_synthesis(messages, user_query, image_pool, headers, event_id):
     _image_list = "\n".join(f"![Image]({url})" for url in image_pool[:10] if url and url.startswith("http"))
     messages.append({
@@ -179,7 +202,9 @@ async def auto_generate_pdf(final_content, query_lower, memoized_results, event_
         return None
     if not any(kw in query_lower.lower() for kw in ("pdf", "export", "save as", "document")):
         return None
-    if not final_content or len(final_content) <= 100:
+    if not is_exportable_pdf_document(final_content):
+        memoized_results["pdf_export_blocked"] = "uncommitted_document"
+        logger.warning("[FINAL] PDF export blocked: content did not pass document validation")
         return None
 
     logger.info(f"[FINAL] Auto-generating PDF ({len(final_content)} chars)")
