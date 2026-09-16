@@ -144,6 +144,21 @@ def _build_evidence_synthesis_messages(
     ]
 
 
+def _search_urls_from_tool_result(tool_result) -> list[str]:
+    """Read URLs from this search result, never from shared request state."""
+    try:
+        payload = json.loads(tool_result) if isinstance(tool_result, str) else tool_result
+    except (TypeError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    return [
+        item.get("url")
+        for item in payload.get("results", [])
+        if isinstance(item, dict) and _is_clean_url(item.get("url"))
+    ]
+
+
 async def _evaluate_deep_search_need(query: str, headers: dict) -> bool:
     gating_messages = [
         {"role": "system", "content": "You are a query complexity evaluator. Return only JSON."},
@@ -194,6 +209,7 @@ async def _execute_deep_search_sub_query(
     emit_event,
     core_service,
     current_utc_time,
+    search_semaphore,
 ):
     collected_sources = []
     collected_images = []
@@ -322,16 +338,40 @@ async def _execute_deep_search_sub_query(
         tool_call_count += len(tool_calls)
 
         if web_search_calls:
+            if len(web_search_calls) > DEEP_SEARCH_MAX_WEB_SEARCHES_PER_SUB:
+                logger.info(
+                    f"[DeepSearch:Sub{sub_query_index}] Bounding web search fan-out "
+                    f"from {len(web_search_calls)} to {DEEP_SEARCH_MAX_WEB_SEARCHES_PER_SUB}"
+                )
+            web_search_calls = web_search_calls[:DEEP_SEARCH_MAX_WEB_SEARCHES_PER_SUB]
+
             async def _exec_ws(idx, tc):
                 fn_name = tc["function"]["name"]
                 fn_args = json.loads(tc["function"]["arguments"])
                 logger.info(f"[DeepSearch:Sub{sub_query_index}] WebSearch #{idx+1}: {fn_args.get('query', '')[:50]}")
                 tool_result = None
-                async for result in optimized_tool_execution(fn_name, fn_args, memoized_results, emit_event):
-                    if isinstance(result, tuple):
-                        tool_result = result[0]
-                    elif isinstance(result, str) and not result.startswith("event:"):
-                        tool_result = result
+
+                async def _consume_search():
+                    nonlocal tool_result
+                    async for result in optimized_tool_execution(
+                        fn_name, fn_args, memoized_results, emit_event
+                    ):
+                        if isinstance(result, tuple):
+                            tool_result = result[0]
+                        elif isinstance(result, str) and not result.startswith("event:"):
+                            tool_result = result
+
+                try:
+                    async with search_semaphore:
+                        await asyncio.wait_for(
+                            _consume_search(),
+                            timeout=float(DEEP_SEARCH_WEB_SEARCH_TIMEOUT_SECONDS),
+                        )
+                except (asyncio.TimeoutError, TimeoutError):
+                    logger.warning(
+                        f"[DeepSearch:Sub{sub_query_index}] Web search timed out "
+                        f"after {DEEP_SEARCH_WEB_SEARCH_TIMEOUT_SECONDS}s"
+                    )
                 return {"tool_call_id": tc["id"], "name": fn_name, "result": tool_result}
 
             ws_results = await asyncio.gather(
@@ -340,10 +380,7 @@ async def _execute_deep_search_sub_query(
             )
             for r in ws_results:
                 if not isinstance(r, Exception):
-                    if "current_search_urls" in memoized_results:
-                        collected_sources.extend(
-                            u for u in memoized_results["current_search_urls"][:3] if _is_clean_url(u)
-                        )
+                    collected_sources.extend(_search_urls_from_tool_result(r["result"])[:3])
                     tool_outputs.append({
                         "role": "tool",
                         "tool_call_id": r["tool_call_id"],
@@ -640,6 +677,7 @@ async def _run_deep_search_pipeline(
     all_sub_results = []
     all_collected_sources = []
     all_collected_images = []
+    search_semaphore = asyncio.Semaphore(DEEP_SEARCH_WEB_SEARCH_CONCURRENCY)
 
     # Run ALL sub-queries in parallel — results stream as they complete
     async def _run_sub(sq_idx, sub_query):
@@ -657,6 +695,7 @@ async def _run_deep_search_pipeline(
                     emit_event=emit_event,
                     core_service=core_service,
                     current_utc_time=current_utc_time,
+                    search_semaphore=search_semaphore,
                 ),
                 timeout=float(DEEP_SEARCH_TIMEOUT_PER_SUB),
             )

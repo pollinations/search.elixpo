@@ -366,3 +366,18 @@ def test_forced_subquery_synthesis_flattens_tool_protocol_into_evidence():
     assert all("tool_call_id" not in message for message in messages)
     assert "Verified database evidence" in messages[1]["content"]
     assert "Compare the database options" in messages[1]["content"]
+
+
+def test_parallel_search_sources_are_read_from_each_result_not_shared_state():
+    import pipeline.deep_search as deep_search
+
+    first = '{"results":[{"url":"https://one.example/report"}]}'
+    second = '{"results":[{"url":"https://two.example/report"}]}'
+
+    assert deep_search._search_urls_from_tool_result(first) == [
+        "https://one.example/report"
+    ]
+    assert deep_search._search_urls_from_tool_result(second) == [
+        "https://two.example/report"
+    ]
+    assert deep_search._search_urls_from_tool_result("not-json") == []

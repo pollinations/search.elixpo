@@ -1144,11 +1144,10 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
 
             # Deep research handoff
             if _deep_research_call:
-                try:
-                    _dr_args = json.loads(_deep_research_call["function"]["arguments"])
-                    _dr_query = _dr_args.get("query", original_user_query)
-                except Exception:
-                    _dr_query = original_user_query
+                # The tool argument is a model-generated research hint and may
+                # narrow or rewrite the request. Decomposition must start from
+                # the complete user/clarification intent retained by runtime.
+                _dr_query = original_user_query
                 async for event in _run_deep_search_pipeline(
                     user_query=_dr_query, user_image=user_image,
                     event_id=event_id, session_id=session_id, emit_event=emit_event,
