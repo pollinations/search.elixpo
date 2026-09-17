@@ -132,7 +132,7 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert 'elem_classes="research-rail"' in source
     assert 'rel="canonical"' in source
     assert 'type="application/ld+json"' in source
-    assert "css=CSS, head=SEO_HEAD, ssr_mode=False" in source
+    assert "css=CSS, head=SEO_HEAD, js=APP_JS, ssr_mode=False" in source
     assert 'APP_KEY = os.getenv("OREOLOOK_APP_KEY"' in source
     assert 'api_key = gr.State("")' in source
     assert 'mode = gr.State("Auto")' in source
@@ -155,3 +155,13 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert "height:clamp(300px,calc(100dvh - 500px),410px)!important" in source
     assert source.index('elem_classes="composer-row"') < source.index("gr.Examples(")
     assert "interactive=False, render=False" in source
+    assert "placeholder=EMPTY_CHAT" in source
+    assert 'elem_id="research-prompt"' in source
+    assert 'elem_id="research-send"' in source
+    assert 'gr.Button("Send"' in source
+    assert "prompt.submit(" not in source
+    assert 'trigger_mode="once"' in source
+    assert "_model_history" in source
+    assert 'class="research-trail"' in source
+    assert "yield display, history" not in source
+    assert "progress-card" not in source

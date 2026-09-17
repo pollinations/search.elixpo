@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import os
+import re
 import time
 
 import spaces
@@ -65,6 +66,28 @@ SEO_HEAD = f"""
 </script>
 """
 
+APP_JS = """
+() => {
+  document.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.key !== "Enter") return;
+    if (!event.target.closest("#research-prompt")) return;
+    event.preventDefault();
+    const send = document.querySelector("#research-send button")
+      || document.getElementById("research-send");
+    if (send && !send.disabled) send.click();
+  });
+}
+"""
+
+EMPTY_CHAT = """
+<div class="empty-chat">
+  <span>✦</span>
+  <strong>What should we uncover?</strong>
+  <p>Search fresh sources, compare the evidence, or create a polished PDF.</p>
+  <small>Ctrl + Enter to send</small>
+</div>
+"""
+
 
 @spaces.GPU(duration=1)
 def _zerogpu_runtime_contract():
@@ -88,9 +111,9 @@ CSS = """
 }
 .gradio-container>main,.gradio-container main,.gradio-container .main,.gradio-container .contain,.gradio-container .fill-width{max-width:none!important;width:100%!important;margin:0!important;padding-left:0!important;padding-right:0!important}
 .site-header{background:rgba(255,253,249,.94)!important;border:0!important;border-bottom:1px solid var(--line)!important;padding:0!important;position:sticky!important;top:0!important;z-index:20!important;backdrop-filter:blur(18px)}
-.topbar{width:min(1240px,calc(100% - 48px));margin:0 auto;min-height:70px;display:flex;align-items:center;justify-content:space-between}.brand{display:flex;align-items:center;gap:12px;color:var(--ink)}
-.brand img{width:38px;height:38px;border-radius:11px;box-shadow:0 5px 16px rgba(47,43,39,.15)}.brand strong{display:block;font-size:17px;letter-spacing:-.025em}.brand small{display:block;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin-top:1px}
-.toplinks{display:flex;align-items:center;gap:7px}.toplinks a{color:var(--muted)!important;font-size:12px;font-weight:600;text-decoration:none!important;padding:8px 11px;border-radius:9px}.toplinks a:hover{background:var(--paper-2);color:var(--ink)!important}
+.topbar{width:min(1240px,calc(100% - 48px));margin:0 auto;min-height:54px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center}.brand{display:flex;align-items:center;gap:9px;color:var(--ink)}
+.brand img{width:31px;height:31px;border-radius:9px;box-shadow:0 4px 12px rgba(47,43,39,.13)}.brand strong{display:block;font-size:15px;letter-spacing:-.025em}.brand small{display:block;color:var(--muted);font-size:8px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin-top:1px}
+.toplinks{display:flex;align-items:center;justify-self:center;gap:5px}.toplinks a{color:var(--muted)!important;font-size:11px;font-weight:650;text-decoration:none!important;padding:6px 9px;border-radius:8px}.toplinks a:hover{background:var(--paper-2);color:var(--ink)!important}
 .hero-wrap{background:transparent!important;border:0!important;padding:0!important}.hero{width:min(1240px,calc(100% - 48px));margin:0 auto;padding:34px 0 50px;border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(280px,.8fr) minmax(320px,1.2fr);gap:70px;align-items:start}.eyebrow{color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}
 .hero h1{font:600 clamp(34px,4vw,52px)/1.02 'Newsreader',Georgia,serif;letter-spacing:-.045em;color:var(--ink);margin:9px 0 0}.hero h1 em{color:var(--accent);font-style:normal}.hero p{color:var(--muted);font-size:16px;line-height:1.7;max-width:650px;margin:2px 0 0}
 .workspace{width:min(1240px,calc(100% - 48px))!important;max-width:1240px!important;margin:0 auto!important;padding:14px 0 26px!important;gap:20px!important;align-items:flex-start!important}
@@ -98,17 +121,18 @@ CSS = """
 .panel h3,.panel h4,.panel strong,.panel label,.panel span,.panel p{color:var(--ink)!important}.panel h3{font:600 20px 'Newsreader',Georgia,serif!important;margin:0 0 4px!important}.panel-copy{color:var(--muted);font-size:12px;line-height:1.55;margin-bottom:12px}
 .chat-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:4px 8px 8px;border-bottom:1px solid var(--line)}.chat-heading strong{display:block;color:var(--ink);font:600 19px 'Newsreader',Georgia,serif}.chat-heading span{display:block;color:var(--muted);font-size:11px;margin-top:2px}.chat-heading small{color:var(--sage);background:#edf3ee;border:1px solid #d7e4da;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:700;white-space:nowrap}
 .chatbot,.chatbot>div{background:var(--paper)!important;border:0!important;color:var(--ink)!important}.chatbot{height:clamp(300px,calc(100dvh - 500px),410px)!important;min-height:300px!important;max-height:410px!important;overflow:hidden!important;overscroll-behavior:contain}.chatbot .message{border-radius:16px!important;box-shadow:none!important;font-size:14px!important;line-height:1.6!important}.chatbot .message.user{background:#37322d!important;color:#fff!important}.chatbot .message.user *{color:#fff!important}.chatbot .message.user code{background:#514b45!important;color:#fff!important}.chatbot .message.user a{color:#fff4e9!important;text-decoration:underline!important}.chatbot .message.bot,.chatbot .message.bot *{color:var(--ink)!important}.chatbot .message.bot{background:var(--paper-2)!important;border:1px solid var(--line)!important}.chatbot .message.bot code{background:#e7e2da!important}.chatbot .message.bot a{color:var(--accent-dark)!important}
+.empty-chat{max-width:430px;margin:0 auto;padding:34px 24px;text-align:center;color:var(--muted)}.empty-chat>span{align-items:center;background:var(--accent-soft);border:1px solid #ebc8b8;border-radius:14px;color:var(--accent);display:flex;font-size:22px;height:48px;justify-content:center;margin:0 auto 14px;width:48px}.empty-chat strong{color:var(--ink)!important;display:block;font:600 23px 'Newsreader',Georgia,serif;margin-bottom:7px}.empty-chat p{font-size:12px;line-height:1.55;margin:0 auto;max-width:360px}.empty-chat small{color:#999188;display:block;font-size:10px;font-weight:700;margin-top:13px;text-transform:uppercase;letter-spacing:.06em}
+.research-trail{background:#f8f5ef;border:1px solid var(--line);border-radius:11px;margin:0 0 12px;padding:9px 11px}.research-trail summary{color:var(--accent-dark);cursor:pointer;font-size:11px;font-weight:800;list-style:none}.research-trail summary::-webkit-details-marker{display:none}.research-trail ul{color:var(--muted);font-size:11px;line-height:1.55;margin:8px 0 1px;padding-left:18px}
 .composer-row{z-index:8!important;background:var(--paper)!important;border-top:1px solid var(--line)!important;padding:6px 2px 1px!important;gap:8px!important}.composer{border:0!important;background:transparent!important}.composer textarea{font-size:14px!important;line-height:1.45!important;background:#f8f6f1!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:12px!important;padding:10px 12px!important}.send-btn{min-width:122px!important;border:0!important;border-radius:12px!important;background:var(--accent)!important;color:#fff!important;font-weight:700!important;box-shadow:none!important}.send-btn:hover{background:var(--accent-dark)!important}
-.new-btn{border:1px solid var(--line)!important;border-radius:11px!important;color:var(--ink)!important;background:var(--paper)!important;font-weight:700!important}.new-btn:hover{border-color:#bcb4a9!important;background:var(--paper-2)!important}
-.oauth-status{background:#f8f6f1!important;border:1px solid var(--line)!important;border-radius:11px!important;padding:11px 12px!important}.oauth-status p{font-size:12px!important;line-height:1.5!important;margin:0!important}.oauth-actions{gap:10px!important;margin-top:9px!important;align-items:stretch!important}.oauth-actions>*{flex:1 1 0!important}.oauth-connect{background:var(--accent)!important;color:#fff!important;border:0!important;font-weight:700!important}.oauth-connect:hover{background:var(--accent-dark)!important}.oauth-disconnect{margin-top:8px!important;background:transparent!important;color:var(--muted)!important;border:1px solid var(--line)!important}.oauth-disconnect:hover{background:var(--paper-2)!important;color:var(--ink)!important}.session-actions{gap:10px!important;margin-top:9px!important;align-items:stretch!important}.session-actions>*{flex:1 1 0!important}
+.new-btn{border:1px solid var(--line)!important;border-radius:12px!important;color:var(--ink)!important;background:var(--paper)!important;font-weight:700!important}.new-btn:hover{border-color:#bcb4a9!important;background:var(--paper-2)!important}
+.oauth-status{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:12px!important;padding:11px 12px!important}.oauth-status p{font-size:12px!important;line-height:1.5!important;margin:0!important}.oauth-actions{background:transparent!important;display:flex!important;flex-direction:column!important;gap:8px!important;margin-top:9px!important;overflow:visible!important}.oauth-actions>*{flex:0 0 auto!important;width:100%!important}.oauth-actions button,.oauth-connect,.oauth-disconnect{border-radius:12px!important;overflow:hidden!important}.oauth-connect{background:var(--accent)!important;color:#fff!important;border:1px solid var(--accent)!important;font-weight:700!important}.oauth-connect:hover{background:var(--accent-dark)!important}.oauth-connect:disabled{background:var(--paper-2)!important;border-color:var(--line)!important;color:var(--muted)!important;opacity:1!important}.oauth-disconnect{margin-top:8px!important;background:var(--paper)!important;color:var(--muted)!important;border:1px solid var(--line)!important}.oauth-disconnect:hover{background:var(--paper-2)!important;color:var(--ink)!important}.oauth-disconnect:disabled{background:var(--paper-2)!important;color:#aaa39b!important;opacity:1!important}
 .secondary-card{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:14px!important;box-shadow:0 7px 22px rgba(58,45,34,.04)!important;overflow:hidden!important}.secondary-card>button{padding:13px 15px!important;color:var(--ink)!important;font-weight:700!important}.secondary-card [class*="content"]{padding:0 14px 14px!important}
-.progress-card{background:#37322d!important;border:0!important;border-radius:14px!important;color:#f7f2eb!important;padding:12px 15px!important}.progress-card p,.progress-card strong{color:#f7f2eb!important;font-size:12px!important;margin:0!important}
 .source-panel a,.artifact-panel a{display:block;background:#f8f6f1;border:1px solid var(--line);border-radius:11px;color:var(--ink)!important;margin:8px 0;padding:11px 12px;text-decoration:none!important;font-size:12px;font-weight:650;overflow-wrap:anywhere}.source-panel a:hover{border-color:#bdb4aa;background:#fff}.artifact-panel a{background:var(--accent-soft);border-color:#e7baa7;color:var(--accent-dark)!important}
 .feature-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}.feature-list span{background:#f5f2ec;border:1px solid var(--line);border-radius:9px;padding:9px 10px;color:var(--muted)!important;font-size:11px;font-weight:600}
 #examples{border:0!important;background:transparent!important;margin:4px 2px 1px!important;padding:0!important}#examples>div:first-child{display:none!important}#examples button{background:var(--paper-2)!important;border:1px solid var(--line)!important;border-radius:999px!important;color:var(--muted)!important;font-size:10px!important;padding:5px 10px!important}#examples button:hover{border-color:#bdb4aa!important;color:var(--ink)!important;background:var(--paper)!important}
 .footer-note{text-align:center;color:#928b82;font-size:11px;padding:0 20px 28px}.footer-note a{color:var(--accent-dark)!important;text-decoration:none!important;font-weight:700}
 @media(max-width:960px){.workspace{flex-direction:column!important}.workspace>div{width:100%!important;min-width:0!important}.research-rail{display:grid!important;grid-template-columns:1fr 1fr!important}.hero{grid-template-columns:1fr;gap:18px}.hero h1{font-size:44px}}
-@media(max-width:640px){.topbar,.hero,.workspace{width:calc(100% - 26px)!important}.topbar{min-height:62px}.toplinks a:not(:first-child){display:none}.workspace{padding-top:8px!important}.hero{padding:28px 0 34px}.hero h1{font-size:37px}.hero p{font-size:14px}.research-rail{display:flex!important}.chatbot{height:300px!important;min-height:300px!important;max-height:300px!important}.chat-heading small{display:none}.send-btn{min-width:82px!important}.composer-row{align-items:stretch!important}.feature-list{grid-template-columns:1fr}}
+@media(max-width:640px){.topbar,.hero,.workspace{width:calc(100% - 26px)!important}.topbar{min-height:50px;display:flex;justify-content:space-between}.brand small{display:none}.toplinks a{padding:6px}.toplinks a:not(:first-child){display:none}.workspace{padding-top:8px!important}.hero{padding:28px 0 34px}.hero h1{font-size:37px}.hero p{font-size:14px}.research-rail{display:flex!important}.chatbot{height:300px!important;min-height:300px!important;max-height:300px!important}.chat-heading small{display:none}.send-btn{min-width:82px!important}.composer-row{align-items:stretch!important}.feature-list{grid-template-columns:1fr}}
 """
 
 
@@ -129,58 +153,109 @@ def _sources_markdown(answer: str) -> tuple[str, str]:
     return "\n\n".join(source_lines), "\n\n".join(artifact_lines)
 
 
-def _progress(tasks: list[str], visible: bool) -> str:
+_RESEARCH_TRAIL = re.compile(
+    r'<details class="research-trail"[^>]*>.*?</details>\s*',
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+
+def _model_history(messages: list[dict] | None) -> list[dict]:
+    """Remove UI-only progress markup before sending context to the model."""
+    cleaned: list[dict] = []
+    for item in messages or []:
+        role = str(item.get("role") or "")
+        content = str(item.get("content") or "")
+        if role == "assistant":
+            content = _RESEARCH_TRAIL.sub("", content).strip()
+        if role in {"user", "assistant"} and content:
+            cleaned.append({"role": role, "content": content})
+    return cleaned
+
+
+def _assistant_message(
+    tasks: list[str], answer: str, visible: bool, *, active: bool
+) -> str:
+    """Render one stable assistant turn containing progress and answer text."""
     if not visible:
-        return "*Task progress hidden.*"
-    if not tasks:
-        return "**Ready.** Ask OreoLook anything that benefits from fresh sources."
-    return "**Research trail**\n\n" + "\n\n".join(f"✓ {html.escape(task)}" for task in tasks[-8:])
+        return answer or "_OreoLook is researching…_"
+    items = tasks[-8:] or ["Starting the research trail…"]
+    task_list = "".join(f"<li>{html.escape(task)}</li>" for task in items)
+    opened = " open" if active and not answer else ""
+    trail = (
+        f'<details class="research-trail"{opened}>'
+        "<summary>Research trail</summary>"
+        f"<ul>{task_list}</ul></details>"
+    )
+    return trail + (f"\n\n{answer}" if answer else "")
+
+
+def _request_controls(*, busy: bool):
+    """Lock the composer while one browser request is in flight."""
+    return (
+        gr.Textbox(value="", interactive=not busy),
+        gr.Button("Working…" if busy else "Send", interactive=not busy),
+    )
 
 
 def chat(prompt: str, messages: list[dict], api_key: str, mode: str, show_tasks: bool):
     """Stream an OreoLook research answer with citations and artifact links."""
     prompt = str(prompt or "").strip()
-    history = [dict(item) for item in (messages or [])]
+    display = [dict(item) for item in (messages or [])]
     if not prompt:
-        yield history, history, _progress([], show_tasks), *_sources_markdown(""), ""
+        yield display, display, *_sources_markdown(""), *_request_controls(busy=False)
         return
-    history.append({"role": "user", "content": prompt})
-    display = [dict(item) for item in history]
-    display.append({"role": "assistant", "content": "_Waking up the search hamsters…_"})
+
+    model_messages = _model_history(display)
+    model_messages.append({"role": "user", "content": prompt})
+    display.append({"role": "user", "content": prompt})
     tasks: list[str] = []
     answer = ""
-    yield display, history, _progress(tasks, show_tasks), *_sources_markdown(answer), ""
+    display.append(
+        {
+            "role": "assistant",
+            "content": _assistant_message(tasks, answer, show_tasks, active=True),
+        }
+    )
+    yield [*display], [*display], *_sources_markdown(answer), *_request_controls(busy=True)
     try:
-        for event in stream_completion(history, api_key=api_key, mode=mode):
+        for event in stream_completion(model_messages, api_key=api_key, mode=mode):
             if event.kind == "task":
                 tasks.append(event.content)
             else:
                 answer += event.content
-                display[-1] = {"role": "assistant", "content": answer}
+            display[-1] = {
+                "role": "assistant",
+                "content": _assistant_message(tasks, answer, show_tasks, active=True),
+            }
             sources, artifacts = _sources_markdown(answer)
-            yield display, history, _progress(tasks, show_tasks), sources, artifacts, ""
+            yield [*display], [*display], sources, artifacts, *_request_controls(busy=True)
     except OreoLookAPIError as exc:
         answer = f"**Tiny snag:** {html.escape(str(exc))}"
-        display[-1] = {"role": "assistant", "content": answer}
-        yield display, history, _progress(tasks, show_tasks), *_sources_markdown(answer), ""
+        display[-1] = {
+            "role": "assistant",
+            "content": _assistant_message(tasks, answer, show_tasks, active=False),
+        }
+        yield [*display], [*display], *_sources_markdown(answer), *_request_controls(busy=False)
         return
     if not answer.strip():
         answer = "**Tiny snag:** OreoLook finished without returning an answer. Please retry."
-        display[-1] = {"role": "assistant", "content": answer}
-    history.append({"role": "assistant", "content": answer})
-    yield display, history, _progress(tasks, show_tasks), *_sources_markdown(answer), ""
+    display[-1] = {
+        "role": "assistant",
+        "content": _assistant_message(tasks, answer, show_tasks, active=False),
+    }
+    yield [*display], [*display], *_sources_markdown(answer), *_request_controls(busy=False)
 
 
 def reset_conversation():
     """Clear only the current browser session's conversation state."""
-    return [], [], _progress([], True), *_sources_markdown(""), ""
+    return [], [], *_sources_markdown(""), ""
 
 
 def _oauth_controls(*, connected: bool, authorizing: bool = False):
     """Return Gradio 6 updates for the composer and OAuth actions."""
     return (
         gr.Textbox(interactive=connected),
-        gr.Button("Ask OreoLook", interactive=connected),
+        gr.Button("Send", interactive=connected),
         gr.Button(
             "Connect with Pollinations",
             interactive=not connected and not authorizing,
@@ -242,25 +317,22 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
     with gr.Row(elem_classes="workspace"):
         with gr.Column(scale=8, min_width=560):
             with gr.Column(elem_classes="chat-card"):
-                gr.HTML("""<div class="chat-heading"><div><strong>Ask OreoLook</strong><span>Live research, clear citations, and polished reports</span></div><small>Private OAuth session</small></div>""")
+                gr.HTML("""<div class="chat-heading"><div><strong>OreoLook research</strong><span>Live research, clear citations, and polished reports</span></div><small>Private OAuth session</small></div>""")
                 chatbot = gr.Chatbot(
                     value=[], height=360, min_height=280, max_height=410, show_label=False,
-                    placeholder=(
-                        "Ask OreoLook anything. Try today's news, a cited comparison, "
-                        "a deep investigation, or a PDF briefing."
-                    ),
+                    placeholder=EMPTY_CHAT,
                     elem_classes="chatbot",
                 )
                 prompt = gr.Textbox(
-                    placeholder="What should OreoLook investigate?", show_label=False,
+                    placeholder="Ask a question or request a report…", show_label=False,
                     lines=2, max_lines=7, container=False, elem_classes="composer", scale=8,
-                    interactive=False, render=False,
+                    interactive=False, render=False, elem_id="research-prompt",
                 )
                 with gr.Row(elem_classes="composer-row"):
                     prompt.render()
                     send = gr.Button(
-                        "Ask OreoLook", variant="primary", elem_classes="send-btn", scale=1,
-                        interactive=False,
+                        "Send", variant="primary", elem_classes="send-btn", scale=1,
+                        interactive=False, elem_id="research-send",
                     )
                 gr.Examples(
                     examples=[
@@ -276,17 +348,16 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                     "Connect with Pollinations to unlock research. No API key pasting required.",
                     elem_classes="oauth-status",
                 )
-                with gr.Row(elem_classes="oauth-actions"):
+                with gr.Column(elem_classes="oauth-actions"):
                     oauth_connect = gr.Button(
                         "Connect with Pollinations", variant="primary", elem_classes="oauth-connect",
                     )
                     new_conversation = gr.Button("＋ New conversation", elem_classes="new-btn")
-                oauth_disconnect = gr.Button(
-                    "Disconnect account", elem_classes="oauth-disconnect",
-                    interactive=False,
-                )
-                show_tasks = gr.Checkbox(value=True, label="Show research progress")
-            progress = gr.Markdown(_progress([], True), elem_classes="progress-card")
+                    oauth_disconnect = gr.Button(
+                        "Disconnect account", elem_classes="oauth-disconnect",
+                        interactive=False,
+                    )
+                show_tasks = gr.Checkbox(value=True, label="Show research trail")
             with gr.Accordion("Sources", open=False, elem_classes="secondary-card"):
                 sources = gr.Markdown(_sources_markdown("")[0], elem_classes="source-panel")
             with gr.Accordion("Downloads", open=False, elem_classes="secondary-card"):
@@ -296,11 +367,23 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
     gr.HTML("""<div class="hero"><div><span class="eyebrow">Research, grounded</span><h1>The web, with <em>receipts.</em></h1></div><p>Ask a quick question, investigate a topic from several angles, or turn current research into a polished PDF report. OreoLook chooses the right depth automatically and keeps the evidence close.</p></div>""", elem_classes="hero-wrap")
     gr.HTML(f'<div class="footer-note">Powered by <a href="https://pollinations.ai" target="_blank">Pollinations AI</a> · Learn more at <a href="{SITE_URL}" target="_blank">search.elixpo.com</a></div>')
 
-    outputs = [chatbot, conversation, progress, sources, artifacts, prompt]
+    outputs = [chatbot, conversation, sources, artifacts, prompt, send]
+    reset_outputs = [chatbot, conversation, sources, artifacts, prompt]
     inputs = [prompt, conversation, api_key, mode, show_tasks]
-    prompt.submit(chat, inputs=inputs, outputs=outputs, concurrency_limit=8, api_name="research")
-    send.click(chat, inputs=inputs, outputs=outputs, concurrency_limit=8, api_name=False)
-    new_conversation.click(reset_conversation, outputs=outputs, queue=False, api_name="new_conversation")
+    send.click(
+        chat,
+        inputs=inputs,
+        outputs=outputs,
+        concurrency_limit=8,
+        trigger_mode="once",
+        api_name="research",
+    )
+    new_conversation.click(
+        reset_conversation,
+        outputs=reset_outputs,
+        queue=False,
+        api_name="new_conversation",
+    )
     oauth_connect.click(
         connect_pollinations,
         outputs=[
@@ -321,5 +404,5 @@ if __name__ == "__main__":
     # The production OreoLook MCP is hosted at search.elixpo.com/mcp. Keeping
     # this UI as a plain Gradio app avoids exposing its API-key input as a tool.
     demo.queue(default_concurrency_limit=8, max_size=64).launch(
-        css=CSS, head=SEO_HEAD, ssr_mode=False,
+        css=CSS, head=SEO_HEAD, js=APP_JS, ssr_mode=False,
     )
