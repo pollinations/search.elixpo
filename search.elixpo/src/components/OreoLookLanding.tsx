@@ -37,9 +37,14 @@ export default function OreoLookLanding() {
           <Link href="/paper"><FileSearch size={16} /> Paper</Link>
           <a href={SPACE_URL} target="_blank" rel="noreferrer"><Rocket size={16} /> Try live</a>
         </nav>
-        <a className="source-link" href="https://github.com/pollinations/lixsearch" target="_blank" rel="noreferrer">
-          <Github size={15} /> <span>GitHub source</span>
-        </a>
+        <div className="nav-actions">
+          <a className="space-link" href={SPACE_URL} target="_blank" rel="noreferrer">
+            <Rocket size={15} /> <span>Live Space</span>
+          </a>
+          <a className="source-link" href="https://github.com/pollinations/search.elixpo" target="_blank" rel="noreferrer">
+            <Github size={15} /> <span>GitHub source</span>
+          </a>
+        </div>
       </header>
 
       <section className="hero-wrap">
@@ -131,7 +136,7 @@ export default function OreoLookLanding() {
         <div><span className="eyebrow">Open by design</span><h2>Inspect it. Fork it. Make search yours.</h2><p>OreoLook is open source, self-hostable, and powered by OreoFlow with Pollinations AI. The research architecture and three-layer cache paper are public too.</p></div>
         <div className="open-links">
           <a href={SPACE_URL} target="_blank" rel="noreferrer">Try the Hugging Face Space <ExternalLink size={14} /></a>
-          <a href="https://github.com/pollinations/lixsearch" target="_blank" rel="noreferrer">Browse the repository <ExternalLink size={14} /></a>
+          <a href="https://github.com/pollinations/search.elixpo" target="_blank" rel="noreferrer">Browse the repository <ExternalLink size={14} /></a>
           <Link href="/paper">Read the research paper <ArrowRight size={14} /></Link>
         </div>
       </section>
@@ -139,7 +144,7 @@ export default function OreoLookLanding() {
       <footer className="site-footer">
         <div className="site-brand"><img src="/favicon.png" alt="" width="30" height="30" /><span><strong>OreoLook</strong><small>Search smarter. Verify everything.</small></span></div>
         <p>Built by Ayushman Bhattacharya and Nihal Gazi with <a href="https://pollinations.ai">Pollinations AI</a>.</p>
-        <div><a href={SPACE_URL}>Live demo</a><Link href="/docs">Docs</Link><Link href="/paper">Paper</Link><a href="https://github.com/pollinations/lixsearch">GitHub</a></div>
+        <div><a href={SPACE_URL} target="_blank" rel="noreferrer">Live Space</a><Link href="/docs">Docs</Link><Link href="/paper">Paper</Link><a href="https://github.com/pollinations/search.elixpo">GitHub</a></div>
       </footer>
     </main>
   );
