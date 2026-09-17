@@ -55,7 +55,8 @@ PDF report.
 | **Live citations** | Clickable sources beside the answer—not buried in prose |
 | **PDF reports** | Downloadable research artifacts for sharing and review |
 | **Follow-up memory** | Continue the investigation in the same browser session |
-| **Streaming progress** | See what OreoLook is doing while the answer develops |
+| **Inline research trail** | Follow each research step inside the live answer without losing chat context |
+| **Focused composer** | One request runs at a time; use `Ctrl + Enter` to send from the keyboard |
 
 ### Prompts worth trying
 
