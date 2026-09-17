@@ -27,6 +27,8 @@ tags:
   - gradio
   - pollinations
   - arxiv:2609.05463
+datasets:
+  - p-research/oreolook-research-evals
 ---
 
 <div align="center">
@@ -38,6 +40,7 @@ tags:
   [![Open Space](https://img.shields.io/badge/Launch-OreoLook-c15f3c?style=for-the-badge)](https://huggingface.co/spaces/Elixpo/OreoLook)
   [![Website](https://img.shields.io/badge/Website-search.elixpo.com-37322d?style=for-the-badge)](https://search.elixpo.com)
   [![Paper](https://img.shields.io/badge/arXiv-2609.05463-b31b1b?style=for-the-badge)](https://arxiv.org/abs/2609.05463)
+  [![Evaluations](https://img.shields.io/badge/Dataset-research%20evals-ff9d00?style=for-the-badge)](https://huggingface.co/datasets/p-research/oreolook-research-evals)
 </div>
 
 ---
