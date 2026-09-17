@@ -12,6 +12,51 @@ from oreolook_client import OreoLookAPIError, extract_links, stream_completion
 
 SITE_URL = os.getenv("OREOLOOK_SITE_URL", "https://search.elixpo.com")
 KEY_URL = os.getenv("POLLINATIONS_KEY_URL", "https://enter.pollinations.ai")
+SPACE_URL = os.getenv("OREOLOOK_SPACE_URL", "https://huggingface.co/spaces/Elixpo/OreoLook")
+OG_IMAGE_URL = os.getenv("OREOLOOK_OG_IMAGE_URL", f"{SITE_URL}/og-image.png")
+
+SEO_HEAD = f"""
+<meta name="description" content="OreoLook is an open-source AI search and deep research agent with live web results, grounded citations, streaming answers, follow-up memory, and downloadable PDF reports.">
+<meta name="keywords" content="AI search engine, deep research agent, web search AI, cited answers, PDF research reports, Pollinations AI, OreoLook, open source AI search">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="application-name" content="OreoLook">
+<meta name="theme-color" content="#f7f5f0">
+<link rel="canonical" href="{SPACE_URL}">
+<link rel="icon" href="{SITE_URL}/favicon.png" type="image/png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OreoLook">
+<meta property="og:title" content="OreoLook — AI Search & Deep Research with Receipts">
+<meta property="og:description" content="Search the live web, investigate topics deeply, verify claims with citations, and export polished PDF research reports.">
+<meta property="og:url" content="{SPACE_URL}">
+<meta property="og:image" content="{OG_IMAGE_URL}">
+<meta property="og:image:alt" content="OreoLook AI search and deep research agent">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OreoLook — AI Search with Receipts">
+<meta name="twitter:description" content="Live web search, cited deep research, streaming answers, and downloadable PDF reports.">
+<meta name="twitter:image" content="{OG_IMAGE_URL}">
+<script type="application/ld+json">
+{{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "OreoLook",
+  "alternateName": "OreoLook AI Search",
+  "applicationCategory": "ResearchApplication",
+  "operatingSystem": "Web",
+  "url": "{SPACE_URL}",
+  "image": "{OG_IMAGE_URL}",
+  "description": "Open-source AI search and deep research agent with live sources, citations, follow-up memory, and PDF report generation.",
+  "isAccessibleForFree": true,
+  "license": "https://opensource.org/licenses/MIT",
+  "creator": [
+    {{"@type": "Person", "name": "Ayushman Bhattacharya"}},
+    {{"@type": "Person", "name": "Nihal Gazi", "url": "https://nihalgazi.com"}}
+  ],
+  "publisher": {{"@type": "Organization", "name": "Pollinations AI", "url": "https://pollinations.ai"}},
+  "citation": "https://arxiv.org/abs/2609.05463",
+  "codeRepository": "https://github.com/pollinations/search.elixpo"
+}}
+</script>
+"""
 
 
 @spaces.GPU(duration=1)
@@ -184,4 +229,4 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
 if __name__ == "__main__":
     # The production OreoLook MCP is hosted at search.elixpo.com/mcp. Keeping
     # this UI as a plain Gradio app avoids exposing its API-key input as a tool.
-    demo.queue(default_concurrency_limit=8, max_size=64).launch(css=CSS)
+    demo.queue(default_concurrency_limit=8, max_size=64).launch(css=CSS, head=SEO_HEAD)

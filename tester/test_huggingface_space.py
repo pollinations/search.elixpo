@@ -109,3 +109,6 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert 'label="Start with an example", elem_id="examples"' in source
     assert 'elem_classes="workspace"' in source
     assert 'elem_classes="research-rail"' in source
+    assert 'rel="canonical"' in source
+    assert 'type="application/ld+json"' in source
+    assert ".launch(css=CSS, head=SEO_HEAD)" in source
