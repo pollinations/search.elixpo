@@ -143,3 +143,8 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert "POLLINATIONS_KEY_URL" not in source
     assert ".chatbot .message.user *" in source
     assert "outputs=[api_key, oauth_status, prompt, send]" in source
+    assert "Session controls" not in source
+    assert 'class="chat-heading"' in source
+    assert source.index('elem_classes="workspace"') < source.index(
+        'elem_classes="hero-wrap"'
+    )
