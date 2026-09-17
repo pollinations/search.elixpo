@@ -152,5 +152,6 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert source.index('elem_classes="workspace"') < source.index(
         'elem_classes="hero-wrap"'
     )
-    assert "position:sticky!important;bottom:0!important" in source
+    assert "height:clamp(300px,calc(100dvh - 500px),410px)!important" in source
+    assert source.index('elem_classes="composer-row"') < source.index("gr.Examples(")
     assert "interactive=False, render=False" in source
