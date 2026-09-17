@@ -192,7 +192,7 @@ def connect_pollinations():
     code = html.escape(authorization.user_code)
     yield "", (
         f'<a href="{link}" target="_blank"><strong>Open Pollinations to authorize ↗</strong></a>'
-        f"<br>Enter code <code>{code}</code>. This page will connect automatically."
+        f"<br>Enter code <strong>{code}</strong>. This page will connect automatically."
     ), *_research_controls(False)
     deadline = time.monotonic() + authorization.expires_in
     while time.monotonic() < deadline:
