@@ -6,13 +6,14 @@ import json
 import os
 import re
 from typing import Iterable, Iterator, Mapping
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 
 DEFAULT_BASE_URL = "https://gen.pollinations.ai/v1"
 DEFAULT_MODEL = "Circuit-Overtime/OreoLook"
+DEFAULT_ENTER_URL = "https://enter.pollinations.ai"
 _TASK = re.compile(r"<TASK>(.*?)</TASK>", re.I | re.S)
 _MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
 _BARE_URL = re.compile(r"(?<!\()https?://[^\s<>\]]+")
@@ -29,17 +30,85 @@ class StreamEvent:
     content: str
 
 
+@dataclass(frozen=True, slots=True)
+class DeviceAuthorization:
+    device_code: str
+    user_code: str
+    verification_uri: str
+    interval: int = 5
+    expires_in: int = 600
+
+
 def resolve_key(user_key: str | None) -> str:
-    key = (user_key or "").strip() or os.getenv("POLLINATIONS_API_KEY", "").strip()
+    key = (user_key or "").strip()
     if not key:
         raise OreoLookAPIError(
-            "Add your Pollinations API key in the sidebar to begin. It stays in this browser session."
+            "Connect your Pollinations account in the sidebar to begin."
         )
     if key.startswith("ag_"):
         raise OreoLookAPIError(
             "Agent-run tokens are internal and cannot be used here. Enter a normal Pollinations API key."
         )
     return key
+
+
+def begin_device_authorization(app_key: str, *, session=requests) -> DeviceAuthorization:
+    """Start Pollinations device OAuth using the public OreoLook app key."""
+    client_id = str(app_key or "").strip()
+    if not client_id.startswith("pk_"):
+        raise OreoLookAPIError("OreoLook OAuth is not configured yet.")
+    enter_url = os.getenv("POLLINATIONS_ENTER_URL", DEFAULT_ENTER_URL).rstrip("/")
+    try:
+        response = session.post(
+            f"{enter_url}/api/device/code",
+            headers={"Content-Type": "application/json"},
+            json={"client_id": client_id}, timeout=(10.0, 20.0),
+        )
+        payload = response.json()
+    except (requests.RequestException, TypeError, ValueError) as exc:
+        raise OreoLookAPIError("Could not start Pollinations sign-in. Please retry.") from exc
+    if response.status_code >= 400:
+        raise OreoLookAPIError("Pollinations sign-in is temporarily unavailable.")
+    try:
+        return DeviceAuthorization(
+            device_code=str(payload["device_code"]),
+            user_code=str(payload["user_code"]),
+            verification_uri=urljoin(f"{enter_url}/", str(payload["verification_uri"])),
+            interval=max(3, int(payload.get("interval", 5))),
+            expires_in=max(30, int(payload.get("expires_in", 600))),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise OreoLookAPIError("Pollinations returned an incomplete sign-in response.") from exc
+
+
+def poll_device_authorization(device_code: str, *, session=requests) -> str | None:
+    """Return the user-scoped key once device OAuth is approved, otherwise None."""
+    enter_url = os.getenv("POLLINATIONS_ENTER_URL", DEFAULT_ENTER_URL).rstrip("/")
+    try:
+        response = session.post(
+            f"{enter_url}/api/oauth/token",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                "device_code": device_code,
+            }, timeout=(10.0, 20.0),
+        )
+        payload = response.json()
+    except (requests.RequestException, TypeError, ValueError) as exc:
+        raise OreoLookAPIError("Could not finish Pollinations sign-in. Please retry.") from exc
+    if response.status_code < 400:
+        token = str(payload.get("access_token") or "").strip()
+        if not token.startswith("sk_"):
+            raise OreoLookAPIError("Pollinations returned an invalid access token.")
+        return token
+    error = str(payload.get("error") or "")
+    if error in {"authorization_pending", "slow_down"}:
+        return None
+    if error == "access_denied":
+        raise OreoLookAPIError("Pollinations sign-in was cancelled.")
+    if error in {"expired_token", "invalid_grant"}:
+        raise OreoLookAPIError("That sign-in code expired. Start again.")
+    raise OreoLookAPIError("Pollinations sign-in could not be completed.")
 
 
 def _mode_prompt(prompt: str, mode: str) -> str:

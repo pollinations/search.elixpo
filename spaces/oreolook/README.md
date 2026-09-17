@@ -1,5 +1,5 @@
 ---
-title: OreoLook
+title: OreoLook — AI Search & Deep Research
 emoji: 🔎
 colorFrom: red
 colorTo: gray
@@ -7,148 +7,159 @@ sdk: gradio
 sdk_version: 6.27.0
 python_version: "3.12"
 app_file: app.py
+fullWidth: true
+header: mini
 pinned: true
 license: mit
-short_description: Live AI search with citations, research, and PDF reports.
+short_description: Live AI search, cited research, and PDF reports.
 thumbnail: https://search.elixpo.com/og-image.png
+startup_duration_timeout: 30m
 tags:
-  - agent
-  - search
+  - ai-search
+  - web-search
   - deep-research
+  - research-agent
+  - retrieval-augmented-generation
+  - citations
+  - pdf-generation
+  - openai-compatible
+  - mcp
+  - gradio
   - pollinations
   - arxiv:2609.05463
 ---
 
-# OreoLook Space
+<div align="center">
+  <img src="https://search.elixpo.com/favicon.png" width="88" alt="OreoLook logo">
+  <h1>OreoLook</h1>
+  <p><strong>Search the live web. Verify the claims. Keep the receipts.</strong></p>
+  <p>An open-source AI search and deep-research agent powered by Pollinations.</p>
 
-[![Powered by Pollinations](https://img.shields.io/badge/Powered%20by-Pollinations-e53935)](https://pollinations.ai)
-[![Paper](https://img.shields.io/badge/arXiv-2609.05463-b31b1b)](https://arxiv.org/abs/2609.05463)
+  [![Open Space](https://img.shields.io/badge/Launch-OreoLook-c15f3c?style=for-the-badge)](https://huggingface.co/spaces/Elixpo/OreoLook)
+  [![Website](https://img.shields.io/badge/Website-search.elixpo.com-37322d?style=for-the-badge)](https://search.elixpo.com)
+  [![Paper](https://img.shields.io/badge/arXiv-2609.05463-b31b1b?style=for-the-badge)](https://arxiv.org/abs/2609.05463)
+</div>
 
-OreoLook is Pollinations' open-source AI research scout: it searches current
-sources, reads useful pages, streams a grounded answer, preserves same-tab
-follow-ups, and can produce downloadable PDF reports.
+---
 
-The Space is a thin UI. It sends OpenAI-compatible Chat Completions requests to
-`https://gen.pollinations.ai/v1` using the registered OreoLook model. Pollinations
-then delegates the run to OreoLook with a short-lived `ag_` token. The Space
-never requests, receives, displays, stores, or logs that delegated token.
+OreoLook turns a question into current, traceable research. It searches fresh
+sources, reads the useful pages, separates its research trail from the final
+answer, preserves follow-up context, and can package the result as a polished
+PDF report.
 
-This demo accompanies **“A Three-Layer Caching Architecture for Low-Latency
-LLM Web Search”** by Ayushman Bhattacharya and Nihal Gazi (2026):
-[arXiv:2609.05463](https://arxiv.org/abs/2609.05463) ·
-[Hugging Face Papers](https://huggingface.co/papers/2609.05463). Linking the
-paper here lets Hugging Face associate this Space with the paper's Apps/Demos
-section. OreoLook is developed with and powered by
-[Pollinations AI](https://pollinations.ai).
+## What you can do
+
+| Capability | What it gives you |
+|---|---|
+| **Quick Search** | A focused, cited answer when speed matters |
+| **Deep Research** | Multi-angle investigation and evidence synthesis |
+| **Live citations** | Clickable sources beside the answer—not buried in prose |
+| **PDF reports** | Downloadable research artifacts for sharing and review |
+| **Follow-up memory** | Continue the investigation in the same browser session |
+| **Streaming progress** | See what OreoLook is doing while the answer develops |
+
+### Prompts worth trying
+
+- `What changed in AI today? Cite the original sources.`
+- `Compare PostgreSQL, MySQL, and MongoDB for a high-traffic application.`
+- `Research this week's climate-tech funding and explain the strongest signals.`
+- `Create a PDF briefing on the latest space-technology news.`
+
+## Built differently
+
+```text
+Your question
+    ↓
+OreoLook decision + research pipeline
+    ↓
+Live search → source reading → evidence synthesis
+    ↓
+Streaming answer + citations + optional PDF
+```
+
+The public Space is a lightweight interface to the registered Pollinations
+model `Circuit-Overtime/OreoLook`. Calls use the OpenAI-compatible endpoint at
+`https://gen.pollinations.ai/v1`; Pollinations delegates each run to OreoLook
+with a short-lived internal `ag_` token.
+
+## User-funded access with Pollinations
+
+The Space uses **Connect User Wallets / BYOP**. Select **Connect with
+Pollinations**, approve access in the new tab, and enter the displayed device
+code. The public `OREOLOOK_APP_KEY` (`pk_…`) identifies this application; it is
+never used as a bearer token.
+
+After approval, Pollinations issues a user-scoped `sk_` token. OreoLook keeps it
+only in that visitor's Gradio session state and uses it for their requests. The
+Space has no shared server-key fallback, so public traffic cannot consume the
+maintainer's balance. Disconnecting clears the local session credential;
+authorized keys can also be revoked from the Pollinations dashboard.
+
+Configure one public Space variable:
+
+```bash
+hf spaces variables add Elixpo/OreoLook OREOLOOK_APP_KEY="pk_your_app_key"
+```
+
+No OAuth client secret, `POLLINATIONS_API_KEY`, signing secret, or `ag_` token
+belongs in the Space settings.
+
+## Research paper
+
+OreoLook accompanies **“A Three-Layer Caching Architecture for Low-Latency LLM
+Web Search”** by Ayushman Bhattacharya and Nihal Gazi (2026).
+
+- [Read the paper on arXiv](https://arxiv.org/abs/2609.05463)
+- [Discuss it on Hugging Face Papers](https://huggingface.co/papers/2609.05463)
+- [Explore the open-source implementation](https://github.com/pollinations/search.elixpo)
 
 ```bibtex
 @article{bhattacharya2026three,
-  title={A Three-Layer Caching Architecture for Low-Latency LLM Web Search},
-  author={Bhattacharya, Ayushman and Gazi, Nihal},
-  journal={arXiv preprint arXiv:2609.05463},
-  year={2026}
+  title   = {A Three-Layer Caching Architecture for Low-Latency LLM Web Search},
+  author  = {Bhattacharya, Ayushman and Gazi, Nihal},
+  journal = {arXiv preprint arXiv:2609.05463},
+  year    = {2026}
 }
 ```
 
-## Features
+## OpenAI-compatible API
 
-- Quick Search and Deep Research controls
-- Streaming Markdown responses
-- Optional task-progress trail kept separate from the final answer
-- Clickable citation panel
-- Downloadable PDF artifact panel
-- Same-browser-session follow-ups and a clear New conversation action
-- Optional masked user-provided Pollinations key
-- Friendly bounded failures for authentication, rate limiting, timeouts, and 5xx errors
+OreoLook can also be called through Pollinations using the familiar Chat
+Completions shape:
 
-## Hugging Face settings
+```bash
+curl https://gen.pollinations.ai/v1/chat/completions \
+  -H "Authorization: Bearer $POLLINATIONS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Circuit-Overtime/OreoLook",
+    "stream": true,
+    "messages": [{"role": "user", "content": "Research the latest MCP developments."}]
+  }'
+```
 
-Add this only under **Settings → Repository secrets** when the public demo
-should work without requiring every visitor to supply a key:
+For native search tooling, citations, content retrieval, and deep research,
+connect to the [OreoLook MCP server](https://search.elixpo.com/docs).
 
-| Secret | Required | Purpose |
-|---|---:|---|
-| `POLLINATIONS_API_KEY` | Optional | Normal `sk_` Pollinations key used as the demo fallback. |
-
-Do not configure `AGENT_TOKEN`, `AGENT_RUN_TOKEN`, `API_KEY`, a signing secret,
-or any `ag_` value. Pollinations owns delegated-token minting and passes the
-short-lived token directly to the OreoLook endpoint.
-
-These are public, non-secret Space variables and normally need no changes:
-
-| Variable | Default |
-|---|---|
-| `POLLINATIONS_BASE_URL` | `https://gen.pollinations.ai/v1` |
-| `POLLINATIONS_MODEL` | `Circuit-Overtime/OreoLook` |
-| `OREOLOOK_SITE_URL` | `https://search.elixpo.com` |
-| `POLLINATIONS_KEY_URL` | `https://enter.pollinations.ai` |
-
-If no demo secret is configured, visitors must enter their own normal
-Pollinations API key. The masked component sends it only to the Space backend
-for the current request. It is not written to disk, logs, analytics, chat
-history, or generated links. A supplied `ag_` token is rejected before any
-network request.
-
-## Run locally
-
-From this directory:
+## Develop and verify
 
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-export POLLINATIONS_API_KEY="sk_your_normal_key"
+export OREOLOOK_APP_KEY="pk_your_app_key"
 python app.py
 ```
 
-Open the local Gradio URL printed by the process. The environment key is
-optional; omit it to test the user-supplied-key flow.
+The Space is an API proxy and does not perform model inference locally. Its
+ZeroGPU contract exists only to make the public Gradio demo available on a free
+personal Hugging Face account; actual research runs on OreoLook's hosted stack.
 
-## Deploy
+---
 
-Create the public Space on a personal account using the free ZeroGPU flavor,
-then push this directory as the Space repository root:
-
-```bash
-hf repos create Elixpo/OreoLook --type space --space-sdk gradio \
-  --flavor zero-a10g --public
-hf upload Elixpo/OreoLook . --repo-type space \
-  --exclude "**/__pycache__/**"
-```
-
-The YAML header selects Python 3.12, Gradio 6.27.0, and `app.py`. The Space
-uses the free-account `zero-a10g` flavor only to satisfy Hugging Face's Gradio
-hosting policy. Its decorated ZeroGPU function is never called; all real work
-is an outbound Pollinations API request, so visitors do not consume GPU quota.
-Hugging Face installs `requirements.txt` automatically. Add the optional demo
-key in the Space settings, never in Git.
-
-## Health and smoke checks
-
-After the Space reports **Running**:
-
-1. Open it without a key. It should either use the configured demo secret or
-   ask for a key without exposing implementation details.
-2. Run a Quick Search and confirm the answer streams while task updates remain
-   in the separate progress card.
-3. Run Deep Research and confirm citations appear as clickable source cards.
-4. Request a PDF and open the download from the Downloads panel.
-5. Ask a follow-up in the same tab, then click New conversation and confirm the
-   previous context no longer influences the answer.
-6. Enter an invalid key and verify the UI shows a safe 401/403 message.
-
-Automated unit smoke tests live in `tester/test_huggingface_space.py` in the
-main OreoLook repository. They cover SSE parsing, task separation, key safety,
-citations, PDF links, mode routing, and upstream failures without making paid
-network calls.
-
-## Failure modes
-
-- **401:** the user or demo key is invalid.
-- **403:** the key cannot access the registered model, or the model is not yet public.
-- **429:** Pollinations rate limit; retry after a short pause.
-- **5xx:** temporary Pollinations or OreoLook upstream failure.
-- **Timeout:** the bounded read window elapsed; retry, or use Quick Search for a smaller request.
-
-Project website: [search.elixpo.com](https://search.elixpo.com)  
-Source: [pollinations/search.elixpo](https://github.com/pollinations/search.elixpo)
+<div align="center">
+  Built by <a href="https://github.com/pollinations">Pollinations</a> ·
+  <a href="https://search.elixpo.com">Website</a> ·
+  <a href="https://github.com/pollinations/search.elixpo">Source</a> ·
+  <a href="https://arxiv.org/abs/2609.05463">Paper</a>
+</div>

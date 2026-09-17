@@ -3,15 +3,23 @@ from __future__ import annotations
 
 import html
 import os
+import time
 
 import spaces
 import gradio as gr
 
-from oreolook_client import OreoLookAPIError, extract_links, stream_completion
+from oreolook_client import (
+    OreoLookAPIError,
+    begin_device_authorization,
+    extract_links,
+    poll_device_authorization,
+    stream_completion,
+)
 
 
 SITE_URL = os.getenv("OREOLOOK_SITE_URL", "https://search.elixpo.com")
 KEY_URL = os.getenv("POLLINATIONS_KEY_URL", "https://enter.pollinations.ai")
+APP_KEY = os.getenv("OREOLOOK_APP_KEY", "").strip()
 SPACE_URL = os.getenv("OREOLOOK_SPACE_URL", "https://huggingface.co/spaces/Elixpo/OreoLook")
 OG_IMAGE_URL = os.getenv("OREOLOOK_OG_IMAGE_URL", f"{SITE_URL}/og-image.png")
 
@@ -93,6 +101,7 @@ CSS = """
 .composer-row{border-top:1px solid var(--line)!important;padding:10px 4px 2px!important;gap:9px!important}.composer{border:0!important;background:transparent!important}.composer textarea{font-size:15px!important;line-height:1.5!important;background:#f8f6f1!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:13px!important;padding:13px 14px!important}.send-btn{min-width:122px!important;border:0!important;border-radius:13px!important;background:var(--accent)!important;color:#fff!important;font-weight:700!important;box-shadow:none!important}.send-btn:hover{background:var(--accent-dark)!important}
 .mode-picker{background:transparent!important;border:0!important}.mode-picker label{background:#f4f0e9!important;border:1px solid transparent!important;border-radius:10px!important;color:var(--ink)!important;padding:9px!important}.mode-picker label:has(input:checked){background:var(--accent-soft)!important;border-color:#e7baa7!important}.mode-picker input:checked+span{color:var(--accent-dark)!important;font-weight:700!important}
 .key-field input{background:#f8f6f1!important;color:var(--ink)!important}.new-btn{border:1px solid var(--line)!important;border-radius:11px!important;color:var(--ink)!important;background:var(--paper)!important;font-weight:700!important}.new-btn:hover{border-color:#bcb4a9!important;background:var(--paper-2)!important}
+.oauth-status{background:#f8f6f1!important;border:1px solid var(--line)!important;border-radius:11px!important;padding:11px 12px!important}.oauth-status p{font-size:12px!important;line-height:1.5!important;margin:0!important}.oauth-actions{gap:8px!important}.oauth-connect{background:var(--accent)!important;color:#fff!important;border:0!important;font-weight:700!important}.oauth-disconnect{background:transparent!important;color:var(--muted)!important;border:1px solid var(--line)!important}
 .progress-card{background:#37322d!important;border:0!important;border-radius:14px!important;color:#f7f2eb!important;padding:12px 15px!important}.progress-card p,.progress-card strong{color:#f7f2eb!important;font-size:12px!important;margin:0!important}
 .source-panel a,.artifact-panel a{display:block;background:#f8f6f1;border:1px solid var(--line);border-radius:11px;color:var(--ink)!important;margin:8px 0;padding:11px 12px;text-decoration:none!important;font-size:12px;font-weight:650;overflow-wrap:anywhere}.source-panel a:hover{border-color:#bdb4aa;background:#fff}.artifact-panel a{background:var(--accent-soft);border-color:#e7baa7;color:var(--accent-dark)!important}
 .feature-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}.feature-list span{background:#f5f2ec;border:1px solid var(--line);border-radius:9px;padding:9px 10px;color:var(--muted)!important;font-size:11px;font-weight:600}
@@ -167,8 +176,41 @@ def reset_conversation():
     return [], [], _progress([], True), *_sources_markdown(""), ""
 
 
+def connect_pollinations():
+    """Authorize one browser session to spend the user's own Pollinations Pollen."""
+    try:
+        authorization = begin_device_authorization(APP_KEY)
+    except OreoLookAPIError as exc:
+        yield "", f"**Sign-in unavailable:** {html.escape(str(exc))}"
+        return
+    link = html.escape(authorization.verification_uri, quote=True)
+    code = html.escape(authorization.user_code)
+    yield "", (
+        f'<a href="{link}" target="_blank"><strong>Open Pollinations to authorize ↗</strong></a>'
+        f"<br>Enter code <code>{code}</code>. This page will connect automatically."
+    )
+    deadline = time.monotonic() + authorization.expires_in
+    while time.monotonic() < deadline:
+        time.sleep(authorization.interval)
+        try:
+            token = poll_device_authorization(authorization.device_code)
+        except OreoLookAPIError as exc:
+            yield "", f"**Sign-in stopped:** {html.escape(str(exc))}"
+            return
+        if token:
+            yield token, "**Connected to Pollinations.** Requests use your account and approved budget."
+            return
+    yield "", "**Sign-in code expired.** Select Connect with Pollinations to start again."
+
+
+def disconnect_pollinations():
+    """Forget the user-scoped Pollinations key held in this browser session."""
+    return "", "Not connected. Connect your Pollinations account to search."
+
+
 with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
     conversation = gr.State([])
+    api_key = gr.State("")
     gr.HTML(f"""<div class="topbar"><div class="brand">
       <img src="{SITE_URL}/favicon.png" alt="OreoLook"><div><strong>OreoLook</strong><small>AI search with receipts</small></div>
     </div><div class="toplinks"><a href="{SITE_URL}" target="_blank">Website ↗</a><a href="{SITE_URL}/docs" target="_blank">API docs ↗</a><a href="https://github.com/pollinations/search.elixpo" target="_blank">GitHub ↗</a></div></div>""", elem_classes="site-header")
@@ -203,13 +245,15 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                     label="Research mode", elem_classes="mode-picker",
                 )
                 show_tasks = gr.Checkbox(value=True, label="Show task progress")
-                api_key = gr.Textbox(
-                    label="Pollinations API key", type="password",
-                    placeholder="sk_… (optional when demo access is enabled)",
-                    info="Held only for this browser session. Never enter an ag_ token.",
-                    elem_classes="key-field",
+                oauth_status = gr.Markdown(
+                    "Not connected. Connect your Pollinations account to search.",
+                    elem_classes="oauth-status",
                 )
-                gr.HTML(f'<a href="{KEY_URL}" target="_blank" style="font-size:12px;color:#9d472a;font-weight:700;text-decoration:none">Get a Pollinations key ↗</a>')
+                with gr.Row(elem_classes="oauth-actions"):
+                    oauth_connect = gr.Button(
+                        "Connect with Pollinations", variant="primary", elem_classes="oauth-connect",
+                    )
+                    oauth_disconnect = gr.Button("Disconnect", elem_classes="oauth-disconnect")
                 new_conversation = gr.Button("＋ New conversation", elem_classes="new-btn")
             progress = gr.Markdown(_progress([], True), elem_classes="progress-card")
             with gr.Group(elem_classes="panel"):
@@ -224,6 +268,14 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
     prompt.submit(chat, inputs=inputs, outputs=outputs, concurrency_limit=8, api_name="research")
     send.click(chat, inputs=inputs, outputs=outputs, concurrency_limit=8, api_name=False)
     new_conversation.click(reset_conversation, outputs=outputs, queue=False, api_name="new_conversation")
+    oauth_connect.click(
+        connect_pollinations, outputs=[api_key, oauth_status],
+        concurrency_limit=4, api_name=False,
+    )
+    oauth_disconnect.click(
+        disconnect_pollinations, outputs=[api_key, oauth_status],
+        queue=False, api_name=False,
+    )
 
 
 if __name__ == "__main__":

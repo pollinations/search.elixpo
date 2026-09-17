@@ -9,7 +9,8 @@ SPACE = Path(__file__).resolve().parents[1] / "spaces" / "oreolook"
 sys.path.insert(0, str(SPACE))
 
 from oreolook_client import (  # noqa: E402
-    OreoLookAPIError, extract_links, parse_sse, resolve_key, stream_completion,
+    OreoLookAPIError, begin_device_authorization, extract_links,
+    parse_sse, poll_device_authorization, resolve_key, stream_completion,
 )
 
 
@@ -21,11 +22,13 @@ def event(content, *, event_type=None):
 
 
 class FakeResponse:
-    def __init__(self, lines=(), status=200):
+    def __init__(self, lines=(), status=200, payload=None):
         self.lines = list(lines); self.status_code = status; self.closed = False
+        self.payload = payload or {}
     def iter_lines(self, decode_unicode=True):
         assert decode_unicode is True
         return iter(self.lines)
+    def json(self): return self.payload
     def close(self): self.closed = True
 
 
@@ -49,12 +52,27 @@ def test_sse_tasks_are_separate_and_reasoning_is_not_rendered():
 
 
 def test_normal_keys_are_session_input_and_agent_tokens_are_rejected(monkeypatch):
-    monkeypatch.delenv("POLLINATIONS_API_KEY", raising=False)
+    monkeypatch.setenv("POLLINATIONS_API_KEY", "sk_shared_must_not_be_used")
     assert resolve_key("sk_user") == "sk_user"
     with pytest.raises(OreoLookAPIError, match="Agent-run tokens"):
         resolve_key("ag_internal")
-    with pytest.raises(OreoLookAPIError, match="Add your Pollinations"):
+    with pytest.raises(OreoLookAPIError, match="Connect your Pollinations"):
         resolve_key("")
+
+
+def test_device_oauth_uses_public_app_key_and_returns_user_token():
+    start = FakeSession(FakeResponse(payload={
+        "device_code": "device-1", "user_code": "OREO-1234",
+        "verification_uri": "/device", "interval": 5, "expires_in": 600,
+    }))
+    authorization = begin_device_authorization("pk_public", session=start)
+    assert authorization.verification_uri == "https://enter.pollinations.ai/device"
+    assert start.calls[0][1]["json"] == {"client_id": "pk_public"}
+
+    pending = FakeSession(FakeResponse(status=400, payload={"error": "authorization_pending"}))
+    assert poll_device_authorization("device-1", session=pending) is None
+    approved = FakeSession(FakeResponse(payload={"access_token": "sk_user_scoped"}))
+    assert poll_device_authorization("device-1", session=approved) == "sk_user_scoped"
 
 
 @pytest.mark.parametrize(
@@ -105,10 +123,11 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     source = (SPACE / "app.py").read_text(encoding="utf-8")
     assert "gr.Blocks(css=" not in source
     assert 'type="messages"' not in source
-    assert ".launch(css=CSS)" in source
     assert 'label="Start with an example", elem_id="examples"' in source
     assert 'elem_classes="workspace"' in source
     assert 'elem_classes="research-rail"' in source
     assert 'rel="canonical"' in source
     assert 'type="application/ld+json"' in source
     assert ".launch(css=CSS, head=SEO_HEAD)" in source
+    assert 'APP_KEY = os.getenv("OREOLOOK_APP_KEY"' in source
+    assert 'api_key = gr.State("")' in source
