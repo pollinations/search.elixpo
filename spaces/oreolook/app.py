@@ -32,7 +32,7 @@ CSS = """
 .chatbot{border:0!important;background:transparent!important}.chatbot .message{border-radius:14px!important;box-shadow:none!important}.chatbot .message.user{background:#171717!important;color:white!important}.chatbot .message.bot{background:#faf8f5!important;border:1px solid var(--line)!important;color:var(--ink)!important}
 .composer textarea{font-size:14px!important;line-height:1.5!important}.send-btn{background:var(--ink)!important;border:0!important;color:#fff!important;font-weight:800!important}.send-btn:hover{background:var(--red)!important}.new-btn{border-color:var(--line)!important;color:var(--ink)!important;font-weight:700!important}
 .progress-card{background:#171717!important;border:0!important;border-radius:13px!important;color:#ddd!important;padding:2px 13px!important}.progress-card p{color:#ddd!important;font-size:11px!important}.source-panel a,.artifact-panel a{display:block;background:#faf8f5;border:1px solid var(--line);border-radius:10px;color:var(--ink)!important;margin:7px 0;padding:10px 12px;text-decoration:none!important;font-size:11px;font-weight:700}.artifact-panel a{background:var(--redsoft);border-color:#f2c9c7;color:#b82d29!important}
-.examples{border:0!important}.examples button{background:#fff!important;border:1px solid var(--line)!important;border-radius:10px!important;color:var(--soft)!important;font-size:11px!important}.footer-note{text-align:center;color:#999;font-size:10px;padding:24px 0 4px}.footer-note a{color:var(--red)!important}
+#examples{border:0!important}#examples button{background:#fff!important;border:1px solid var(--line)!important;border-radius:10px!important;color:var(--soft)!important;font-size:11px!important}.footer-note{text-align:center;color:#999;font-size:10px;padding:24px 0 4px}.footer-note a{color:var(--red)!important}
 @media(max-width:760px){.app-shell{padding:16px 13px}.toplinks{display:none}.hero{padding-top:25px}.hero h1{font-size:42px}.workspace{display:flex!important;flex-direction:column!important}}
 """
 
@@ -145,7 +145,7 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                     "Compare PostgreSQL, MySQL, and MongoDB for a high-traffic application.",
                     "Research the latest climate-tech funding trends and explain the strongest signals.",
                     "Create a PDF briefing on this week's major space-technology news.",
-                ], inputs=prompt, label="Try a prompt", elem_classes="examples",
+                ], inputs=prompt, label="Try a prompt", elem_id="examples",
             )
         with gr.Column(scale=3, min_width=250):
             with gr.Group(elem_classes="side-card"):

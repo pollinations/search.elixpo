@@ -106,3 +106,4 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert "gr.Blocks(css=" not in source
     assert 'type="messages"' not in source
     assert ".launch(css=CSS)" in source
+    assert 'label="Try a prompt", elem_id="examples"' in source
