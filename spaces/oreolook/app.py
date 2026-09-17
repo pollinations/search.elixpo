@@ -97,18 +97,19 @@ CSS = """
 .workspace{width:min(1240px,calc(100% - 48px))!important;max-width:1240px!important;margin:0 auto!important;padding:0 0 42px!important;gap:20px!important;align-items:flex-start!important}
 .chat-card,.panel{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:18px!important;box-shadow:var(--shadow)!important}.chat-card{padding:10px!important;overflow:hidden}.panel{padding:18px!important;box-shadow:0 9px 32px rgba(58,45,34,.055)!important}
 .panel h3,.panel h4,.panel strong,.panel label,.panel span,.panel p{color:var(--ink)!important}.panel h3{font:600 20px 'Newsreader',Georgia,serif!important;margin:0 0 4px!important}.panel-copy{color:var(--muted);font-size:12px;line-height:1.55;margin-bottom:12px}
-.chatbot,.chatbot>div{background:var(--paper)!important;border:0!important;color:var(--ink)!important}.chatbot .message{border-radius:16px!important;box-shadow:none!important;font-size:14px!important;line-height:1.6!important}.chatbot .message.user{background:#37322d!important;color:#fff!important}.chatbot .message.bot{background:var(--paper-2)!important;border:1px solid var(--line)!important;color:var(--ink)!important}
+.chatbot,.chatbot>div{background:var(--paper)!important;border:0!important;color:var(--ink)!important}.chatbot{height:clamp(390px,calc(100dvh - 365px),650px)!important}.chatbot .message{border-radius:16px!important;box-shadow:none!important;font-size:14px!important;line-height:1.6!important}.chatbot .message.user{background:#37322d!important;color:#fff!important}.chatbot .message.bot{background:var(--paper-2)!important;border:1px solid var(--line)!important;color:var(--ink)!important}
 .composer-row{border-top:1px solid var(--line)!important;padding:10px 4px 2px!important;gap:9px!important}.composer{border:0!important;background:transparent!important}.composer textarea{font-size:15px!important;line-height:1.5!important;background:#f8f6f1!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:13px!important;padding:13px 14px!important}.send-btn{min-width:122px!important;border:0!important;border-radius:13px!important;background:var(--accent)!important;color:#fff!important;font-weight:700!important;box-shadow:none!important}.send-btn:hover{background:var(--accent-dark)!important}
-.mode-picker{background:transparent!important;border:0!important}.mode-picker label{background:#f4f0e9!important;border:1px solid transparent!important;border-radius:10px!important;color:var(--ink)!important;padding:9px!important}.mode-picker label:has(input:checked){background:var(--accent-soft)!important;border-color:#e7baa7!important}.mode-picker input:checked+span{color:var(--accent-dark)!important;font-weight:700!important}
-.key-field input{background:#f8f6f1!important;color:var(--ink)!important}.new-btn{border:1px solid var(--line)!important;border-radius:11px!important;color:var(--ink)!important;background:var(--paper)!important;font-weight:700!important}.new-btn:hover{border-color:#bcb4a9!important;background:var(--paper-2)!important}
+.new-btn{border:1px solid var(--line)!important;border-radius:11px!important;color:var(--ink)!important;background:var(--paper)!important;font-weight:700!important}.new-btn:hover{border-color:#bcb4a9!important;background:var(--paper-2)!important}
 .oauth-status{background:#f8f6f1!important;border:1px solid var(--line)!important;border-radius:11px!important;padding:11px 12px!important}.oauth-status p{font-size:12px!important;line-height:1.5!important;margin:0!important}.oauth-actions{gap:8px!important}.oauth-connect{background:var(--accent)!important;color:#fff!important;border:0!important;font-weight:700!important}.oauth-disconnect{background:transparent!important;color:var(--muted)!important;border:1px solid var(--line)!important}
+.session-actions{gap:10px!important;margin-top:9px!important;align-items:stretch!important}.session-actions>*{flex:1 1 0!important}.key-link{padding:0!important;border:0!important;background:transparent!important}.key-link a{display:flex;align-items:center;justify-content:center;min-height:42px;padding:9px 12px;border:1px solid var(--line);border-radius:11px;background:var(--paper);color:var(--accent-dark)!important;text-decoration:none!important;font-size:12px;font-weight:700;text-align:center}.key-link a:hover{background:var(--accent-soft);border-color:#e7baa7}
+.secondary-card{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:14px!important;box-shadow:0 7px 22px rgba(58,45,34,.04)!important;overflow:hidden!important}.secondary-card>button{padding:13px 15px!important;color:var(--ink)!important;font-weight:700!important}.secondary-card [class*="content"]{padding:0 14px 14px!important}
 .progress-card{background:#37322d!important;border:0!important;border-radius:14px!important;color:#f7f2eb!important;padding:12px 15px!important}.progress-card p,.progress-card strong{color:#f7f2eb!important;font-size:12px!important;margin:0!important}
 .source-panel a,.artifact-panel a{display:block;background:#f8f6f1;border:1px solid var(--line);border-radius:11px;color:var(--ink)!important;margin:8px 0;padding:11px 12px;text-decoration:none!important;font-size:12px;font-weight:650;overflow-wrap:anywhere}.source-panel a:hover{border-color:#bdb4aa;background:#fff}.artifact-panel a{background:var(--accent-soft);border-color:#e7baa7;color:var(--accent-dark)!important}
 .feature-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}.feature-list span{background:#f5f2ec;border:1px solid var(--line);border-radius:9px;padding:9px 10px;color:var(--muted)!important;font-size:11px;font-weight:600}
 #examples{border:0!important;background:transparent!important;margin-top:10px!important}#examples button{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:999px!important;color:var(--muted)!important;font-size:11px!important;padding:7px 12px!important}#examples button:hover{border-color:#bdb4aa!important;color:var(--ink)!important}
 .footer-note{text-align:center;color:#928b82;font-size:11px;padding:0 20px 28px}.footer-note a{color:var(--accent-dark)!important;text-decoration:none!important;font-weight:700}
-@media(max-width:960px){.workspace{flex-direction:column!important}.workspace>div{width:100%!important;min-width:0!important}.research-rail{display:grid!important;grid-template-columns:1fr 1fr!important}.hero h1{font-size:48px}.chatbot{height:520px!important}}
-@media(max-width:640px){.topbar,.hero,.workspace{width:calc(100% - 26px)!important}.topbar{min-height:62px}.toplinks a:not(:first-child){display:none}.hero{padding:32px 0 22px}.hero h1{font-size:39px}.hero p{font-size:14px}.research-rail{display:flex!important}.chatbot{height:470px!important}.send-btn{min-width:82px!important}.composer-row{align-items:stretch!important}.feature-list{grid-template-columns:1fr}}
+@media(max-width:960px){.workspace{flex-direction:column!important}.workspace>div{width:100%!important;min-width:0!important}.research-rail{display:grid!important;grid-template-columns:1fr 1fr!important}.hero h1{font-size:48px}.chatbot{height:clamp(420px,calc(100dvh - 330px),620px)!important}}
+@media(max-width:640px){.topbar,.hero,.workspace{width:calc(100% - 26px)!important}.topbar{min-height:62px}.toplinks a:not(:first-child){display:none}.hero{padding:28px 0 18px}.hero h1{font-size:39px}.hero p{font-size:14px}.research-rail{display:flex!important}.chatbot{height:clamp(360px,calc(100dvh - 300px),540px)!important}.send-btn{min-width:82px!important}.composer-row{align-items:stretch!important}.feature-list{grid-template-columns:1fr}}
 """
 
 
@@ -211,6 +212,7 @@ def disconnect_pollinations():
 with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
     conversation = gr.State([])
     api_key = gr.State("")
+    mode = gr.State("Auto")
     gr.HTML(f"""<div class="topbar"><div class="brand">
       <img src="{SITE_URL}/favicon.png" alt="OreoLook"><div><strong>OreoLook</strong><small>AI search with receipts</small></div>
     </div><div class="toplinks"><a href="{SITE_URL}" target="_blank">Website ↗</a><a href="{SITE_URL}/docs" target="_blank">API docs ↗</a><a href="https://github.com/pollinations/search.elixpo" target="_blank">GitHub ↗</a></div></div>""", elem_classes="site-header")
@@ -220,7 +222,10 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
             with gr.Group(elem_classes="chat-card"):
                 chatbot = gr.Chatbot(
                     value=[], height=610, show_label=False,
-                    placeholder="Ask about today's news, compare products, research a topic, or request a PDF.",
+                    placeholder=(
+                        "Ask OreoLook anything. Try today's news, a cited comparison, "
+                        "a deep investigation, or a PDF briefing."
+                    ),
                     elem_classes="chatbot",
                 )
                 with gr.Row(elem_classes="composer-row"):
@@ -239,11 +244,7 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
             )
         with gr.Column(scale=3, min_width=290, elem_classes="research-rail"):
             with gr.Group(elem_classes="panel"):
-                gr.HTML('<h3>Research settings</h3><div class="panel-copy">Choose a fast answer or a broader, multi-source investigation.</div>')
-                mode = gr.Radio(
-                    ["Quick Search", "Deep Research"], value="Quick Search",
-                    label="Research mode", elem_classes="mode-picker",
-                )
+                gr.HTML('<h3>Session controls</h3><div class="panel-copy">OreoLook automatically chooses the right research depth for each question.</div>')
                 show_tasks = gr.Checkbox(value=True, label="Show task progress")
                 oauth_status = gr.Markdown(
                     "Not connected. Connect your Pollinations account to search.",
@@ -254,13 +255,19 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                         "Connect with Pollinations", variant="primary", elem_classes="oauth-connect",
                     )
                     oauth_disconnect = gr.Button("Disconnect", elem_classes="oauth-disconnect")
-                new_conversation = gr.Button("＋ New conversation", elem_classes="new-btn")
+                with gr.Row(elem_classes="session-actions"):
+                    gr.HTML(
+                        f'<a href="{KEY_URL}" target="_blank">Get an API key ↗</a>',
+                        elem_classes="key-link",
+                    )
+                    new_conversation = gr.Button("＋ New conversation", elem_classes="new-btn")
             progress = gr.Markdown(_progress([], True), elem_classes="progress-card")
-            with gr.Group(elem_classes="panel"):
+            with gr.Accordion("Sources", open=False, elem_classes="secondary-card"):
                 sources = gr.Markdown(_sources_markdown("")[0], elem_classes="source-panel")
-            with gr.Group(elem_classes="panel"):
+            with gr.Accordion("Downloads", open=False, elem_classes="secondary-card"):
                 artifacts = gr.Markdown(_sources_markdown("")[1], elem_classes="artifact-panel")
-            gr.HTML("""<div><h3>Built for real research</h3><div class="feature-list"><span>Live web search</span><span>Deep research</span><span>Source citations</span><span>PDF reports</span><span>Same-tab memory</span><span>Streaming answers</span></div></div>""", elem_classes="panel")
+            with gr.Accordion("Built for real research", open=False, elem_classes="secondary-card"):
+                gr.HTML("""<div class="feature-list"><span>Live web search</span><span>Automatic depth</span><span>Source citations</span><span>PDF reports</span><span>Same-tab memory</span><span>Streaming answers</span></div>""")
     gr.HTML(f'<div class="footer-note">Powered by <a href="https://pollinations.ai" target="_blank">Pollinations AI</a> · Learn more at <a href="{SITE_URL}" target="_blank">search.elixpo.com</a></div>')
 
     outputs = [chatbot, conversation, progress, sources, artifacts, prompt]

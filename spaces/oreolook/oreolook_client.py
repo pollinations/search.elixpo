@@ -117,9 +117,14 @@ def _mode_prompt(prompt: str, mode: str) -> str:
             "Use deep research for this request. Investigate multiple relevant angles, verify current "
             "claims against sources, and synthesize a thorough cited answer.\n\n" + prompt.strip()
         )
+    if str(mode).lower().startswith("quick"):
+        return (
+            "Use quick search for this request. Prefer a fast, focused search with a concise cited answer.\n\n"
+            + prompt.strip()
+        )
     return (
-        "Use quick search for this request. Prefer a fast, focused search with a concise cited answer.\n\n"
-        + prompt.strip()
+        "Choose the appropriate research depth for this request. Use the least work needed for a reliable "
+        "answer, but investigate multiple angles when the question genuinely requires it.\n\n" + prompt.strip()
     )
 
 

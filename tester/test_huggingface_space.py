@@ -77,7 +77,11 @@ def test_device_oauth_uses_public_app_key_and_returns_user_token():
 
 @pytest.mark.parametrize(
     ("mode", "instruction"),
-    [("Quick Search", "Use quick search"), ("Deep Research", "Use deep research")],
+    [
+        ("Quick Search", "Use quick search"),
+        ("Deep Research", "Use deep research"),
+        ("Auto", "Choose the appropriate research depth"),
+    ],
 )
 def test_stream_calls_pollinations_without_persisting_or_exposing_key(mode, instruction):
     response = FakeResponse([event("Hello"), "data: [DONE]"])
@@ -131,3 +135,7 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert ".launch(css=CSS, head=SEO_HEAD)" in source
     assert 'APP_KEY = os.getenv("OREOLOOK_APP_KEY"' in source
     assert 'api_key = gr.State("")' in source
+    assert 'mode = gr.State("Auto")' in source
+    assert "gr.Radio(" not in source
+    assert 'gr.Accordion("Sources", open=False' in source
+    assert 'gr.Accordion("Downloads", open=False' in source

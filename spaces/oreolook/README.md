@@ -51,8 +51,7 @@ PDF report.
 
 | Capability | What it gives you |
 |---|---|
-| **Quick Search** | A focused, cited answer when speed matters |
-| **Deep Research** | Multi-angle investigation and evidence synthesis |
+| **Automatic depth** | Fast answers for simple questions; multi-angle research when needed |
 | **Live citations** | Clickable sources beside the answer—not buried in prose |
 | **PDF reports** | Downloadable research artifacts for sharing and review |
 | **Follow-up memory** | Continue the investigation in the same browser session |
