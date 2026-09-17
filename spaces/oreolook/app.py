@@ -101,7 +101,7 @@ def reset_conversation():
     return [], [], _progress([], True), *_sources_markdown(""), ""
 
 
-with gr.Blocks(css=CSS, title="OreoLook — AI search with receipts") as demo:
+with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
     conversation = gr.State([])
     gr.HTML(f"""
     <div class="app-shell"><div class="topbar"><div class="brand">
@@ -129,7 +129,7 @@ with gr.Blocks(css=CSS, title="OreoLook — AI search with receipts") as demo:
         with gr.Column(scale=7, min_width=420):
             with gr.Group(elem_classes="chat-card"):
                 chatbot = gr.Chatbot(
-                    value=[], type="messages", height=560, show_label=False,
+                    value=[], height=560, show_label=False,
                     placeholder="Ask about today's news, compare products, research a topic, or request a PDF.",
                     elem_classes="chatbot",
                 )
@@ -168,4 +168,4 @@ with gr.Blocks(css=CSS, title="OreoLook — AI search with receipts") as demo:
 if __name__ == "__main__":
     # The production OreoLook MCP is hosted at search.elixpo.com/mcp. Keeping
     # this UI as a plain Gradio app avoids exposing its API-key input as a tool.
-    demo.queue(default_concurrency_limit=8, max_size=64).launch()
+    demo.queue(default_concurrency_limit=8, max_size=64).launch(css=CSS)

@@ -99,3 +99,10 @@ def test_upstream_failures_are_safe(status, phrase):
             [{"role": "user", "content": "hello"}],
             api_key="sk_private", mode="Quick Search", session=session,
         ))
+
+
+def test_space_uses_gradio_6_app_level_and_chatbot_apis():
+    source = (SPACE / "app.py").read_text(encoding="utf-8")
+    assert "gr.Blocks(css=" not in source
+    assert 'type="messages"' not in source
+    assert ".launch(css=CSS)" in source
