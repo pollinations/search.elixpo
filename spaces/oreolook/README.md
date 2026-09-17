@@ -110,9 +110,9 @@ Create the public Space on a personal account using the free ZeroGPU flavor,
 then push this directory as the Space repository root:
 
 ```bash
-hf repos create YOUR_HF_USERNAME/OreoLook --type space --space-sdk gradio \
+hf repos create Elixpo/OreoLook --type space --space-sdk gradio \
   --flavor zero-a10g --public
-hf upload YOUR_HF_USERNAME/OreoLook . --repo-type space \
+hf upload Elixpo/OreoLook . --repo-type space \
   --exclude "**/__pycache__/**"
 ```
 
