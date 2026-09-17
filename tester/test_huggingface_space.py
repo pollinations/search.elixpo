@@ -160,6 +160,10 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert 'elem_classes="research-rail"' in source
     assert 'rel="canonical"' in source
     assert 'type="application/ld+json"' in source
+    assert 'PAPER_URL = "https://arxiv.org/abs/2609.05463"' in source
+    assert 'HF_PAPER_URL = "https://huggingface.co/papers/2609.05463"' in source
+    assert 'class="paper-citation"' in source
+    assert '>Paper ↗</a>' in source
     assert "css=CSS, head=SEO_HEAD, js=APP_JS, ssr_mode=False" in source
     assert 'APP_KEY = os.getenv("OREOLOOK_APP_KEY"' in source
     assert 'api_key = gr.State("")' in source

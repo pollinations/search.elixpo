@@ -23,10 +23,12 @@ SITE_URL = os.getenv("OREOLOOK_SITE_URL", "https://search.elixpo.com")
 APP_KEY = os.getenv("OREOLOOK_APP_KEY", "").strip()
 SPACE_URL = os.getenv("OREOLOOK_SPACE_URL", "https://huggingface.co/spaces/Elixpo/OreoLook")
 OG_IMAGE_URL = os.getenv("OREOLOOK_OG_IMAGE_URL", f"{SITE_URL}/og-image.png")
+PAPER_URL = "https://arxiv.org/abs/2609.05463"
+HF_PAPER_URL = "https://huggingface.co/papers/2609.05463"
 
 SEO_HEAD = f"""
 <meta name="description" content="OreoLook is an open-source AI search and deep research agent with live web results, grounded citations, streaming answers, follow-up memory, and downloadable PDF reports.">
-<meta name="keywords" content="AI search engine, deep research agent, web search AI, cited answers, PDF research reports, Pollinations AI, OreoLook, open source AI search">
+<meta name="keywords" content="AI search engine, deep research agent, web search AI, cited answers, PDF research reports, LLM web search caching, commodity CPU inference, Pollinations AI, OreoLook, arXiv 2609.05463">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 <meta name="application-name" content="OreoLook">
 <meta name="theme-color" content="#f7f5f0">
@@ -61,7 +63,7 @@ SEO_HEAD = f"""
     {{"@type": "Person", "name": "Nihal Gazi", "url": "https://nihalgazi.com"}}
   ],
   "publisher": {{"@type": "Organization", "name": "Pollinations AI", "url": "https://pollinations.ai"}},
-  "citation": "https://arxiv.org/abs/2609.05463",
+  "citation": "{PAPER_URL}",
   "codeRepository": "https://github.com/pollinations/search.elixpo"
 }}
 </script>
@@ -141,6 +143,7 @@ CSS = """
 .feature-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}.feature-list span{background:#f5f2ec;border:1px solid var(--line);border-radius:9px;padding:9px 10px;color:var(--muted)!important;font-size:11px;font-weight:600}
 #examples{border:0!important;background:transparent!important;margin:4px 2px 1px!important;padding:0!important}#examples>div:first-child{display:none!important}#examples button{background:var(--paper-2)!important;border:1px solid var(--line)!important;border-radius:999px!important;color:var(--muted)!important;font-size:10px!important;padding:5px 10px!important}#examples button:hover{border-color:#bdb4aa!important;color:var(--ink)!important;background:var(--paper)!important}
 .footer-note{text-align:center;color:#928b82;font-size:11px;padding:0 20px 28px}.footer-note a{color:var(--accent-dark)!important;text-decoration:none!important;font-weight:700}
+.paper-citation{width:min(1240px,calc(100% - 48px));margin:0 auto 18px;padding:13px 16px;border:1px solid var(--line);border-radius:14px;background:var(--paper);color:var(--muted);font-size:11px;line-height:1.55;text-align:center}.paper-citation strong{color:var(--ink)}.paper-citation a{color:var(--accent-dark)!important;font-weight:700;text-decoration:none!important}.paper-citation a:hover{text-decoration:underline!important}
 @media(max-width:960px){.workspace{flex-direction:column!important}.workspace>div{width:100%!important;min-width:0!important}.research-rail{display:grid!important;grid-template-columns:1fr 1fr!important}.hero{grid-template-columns:1fr;gap:18px}.hero h1{font-size:44px}}
 @media(max-width:640px){.topbar,.hero,.workspace{width:calc(100% - 26px)!important}.topbar{min-height:50px;display:flex;justify-content:space-between}.brand small{display:none}.toplinks a{padding:6px}.toplinks a:not(:first-child){display:none}.workspace{padding-top:8px!important}.hero{padding:28px 0 34px}.hero h1{font-size:37px}.hero p{font-size:14px}.research-rail{display:flex!important}.chatbot{height:300px!important;min-height:300px!important;max-height:300px!important}.chat-heading small{display:none}.send-btn{min-width:82px!important}.composer-row{align-items:stretch!important}.feature-list{grid-template-columns:1fr}}
 """
@@ -342,7 +345,7 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
     mode = gr.State("Auto")
     gr.HTML(f"""<div class="topbar"><div class="brand">
       <img src="{SITE_URL}/favicon.png" alt="OreoLook"><div><strong>OreoLook</strong><small>AI search with receipts</small></div>
-    </div><div class="toplinks"><a href="{SITE_URL}" target="_blank">Website ↗</a><a href="{SITE_URL}/docs" target="_blank">API docs ↗</a><a href="https://github.com/pollinations/search.elixpo" target="_blank">GitHub ↗</a></div></div>""", elem_classes="site-header")
+    </div><div class="toplinks"><a href="{SITE_URL}" target="_blank">Website ↗</a><a href="{SITE_URL}/docs" target="_blank">API docs ↗</a><a href="{PAPER_URL}" target="_blank">Paper ↗</a><a href="https://github.com/pollinations/search.elixpo" target="_blank">GitHub ↗</a></div></div>""", elem_classes="site-header")
     with gr.Row(elem_classes="workspace"):
         with gr.Column(scale=8, min_width=560):
             with gr.Column(elem_classes="chat-card"):
@@ -395,7 +398,12 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
             with gr.Accordion("Built for real research", open=False, elem_classes="secondary-card"):
                 gr.HTML("""<div class="feature-list"><span>Live web search</span><span>Automatic depth</span><span>Source citations</span><span>PDF reports</span><span>Same-tab memory</span><span>Streaming answers</span></div>""")
     gr.HTML("""<div class="hero"><div><span class="eyebrow">Research, grounded</span><h1>The web, with <em>receipts.</em></h1></div><p>Ask a quick question, investigate a topic from several angles, or turn current research into a polished PDF report. OreoLook chooses the right depth automatically and keeps the evidence close.</p></div>""", elem_classes="hero-wrap")
-    gr.HTML(f'<div class="footer-note">Powered by <a href="https://pollinations.ai" target="_blank">Pollinations AI</a> · Learn more at <a href="{SITE_URL}" target="_blank">search.elixpo.com</a></div>')
+    gr.HTML(f'''<div class="paper-citation"><strong>Research behind OreoLook:</strong>
+      Ayushman Bhattacharya and Nihal Gazi, “A Three-Layer Caching Architecture for
+      Low-Latency LLM Web Search on Commodity CPU Hardware” (2026) ·
+      <a href="{PAPER_URL}" target="_blank" rel="noopener">arXiv:2609.05463</a> ·
+      <a href="{HF_PAPER_URL}" target="_blank" rel="noopener">Hugging Face Paper</a>
+    </div><div class="footer-note">Powered by <a href="https://pollinations.ai" target="_blank">Pollinations AI</a> · Learn more at <a href="{SITE_URL}" target="_blank">search.elixpo.com</a></div>''')
 
     outputs = [chatbot, conversation, sources, artifacts, prompt, send]
     reset_outputs = [chatbot, conversation, sources, artifacts, prompt]

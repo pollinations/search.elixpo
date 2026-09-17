@@ -107,7 +107,8 @@ belongs in the Space settings.
 ## Research paper
 
 OreoLook accompanies **“A Three-Layer Caching Architecture for Low-Latency LLM
-Web Search”** by Ayushman Bhattacharya and Nihal Gazi (2026).
+Web Search on Commodity CPU Hardware”** by Ayushman Bhattacharya and Nihal Gazi
+(2026).
 
 - [Read the paper on arXiv](https://arxiv.org/abs/2609.05463)
 - [Discuss it on Hugging Face Papers](https://huggingface.co/papers/2609.05463)
@@ -115,7 +116,7 @@ Web Search”** by Ayushman Bhattacharya and Nihal Gazi (2026).
 
 ```bibtex
 @article{bhattacharya2026three,
-  title   = {A Three-Layer Caching Architecture for Low-Latency LLM Web Search},
+  title   = {A Three-Layer Caching Architecture for Low-Latency LLM Web Search on Commodity CPU Hardware},
   author  = {Bhattacharya, Ayushman and Gazi, Nihal},
   journal = {arXiv preprint arXiv:2609.05463},
   year    = {2026}
