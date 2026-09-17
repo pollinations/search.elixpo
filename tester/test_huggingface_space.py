@@ -11,6 +11,7 @@ sys.path.insert(0, str(SPACE))
 from oreolook_client import (  # noqa: E402
     OreoLookAPIError, begin_device_authorization, extract_links,
     parse_sse, poll_device_authorization, resolve_key, stream_completion,
+    verification_url_with_code,
 )
 
 
@@ -73,6 +74,15 @@ def test_device_oauth_uses_public_app_key_and_returns_user_token():
     assert poll_device_authorization("device-1", session=pending) is None
     approved = FakeSession(FakeResponse(payload={"access_token": "sk_user_scoped"}))
     assert poll_device_authorization("device-1", session=approved) == "sk_user_scoped"
+
+
+def test_device_verification_url_prefills_and_preserves_query():
+    assert verification_url_with_code(
+        "https://enter.pollinations.ai/device?source=oreolook",
+        "OREO 1234",
+    ) == (
+        "https://enter.pollinations.ai/device?source=oreolook&user_code=OREO+1234"
+    )
 
 
 @pytest.mark.parametrize(
@@ -165,3 +175,7 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert 'class="research-trail"' in source
     assert "yield display, history" not in source
     assert "progress-card" not in source
+    assert 'class="empty-connect"' in source
+    assert 'elem_id="pollinations-connect"' in source
+    assert "verification_url_with_code(" in source
+    assert 'height:48px!important' in source

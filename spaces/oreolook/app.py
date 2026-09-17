@@ -15,6 +15,7 @@ from oreolook_client import (
     extract_links,
     poll_device_authorization,
     stream_completion,
+    verification_url_with_code,
 )
 
 
@@ -76,6 +77,14 @@ APP_JS = """
       || document.getElementById("research-send");
     if (send && !send.disabled) send.click();
   });
+  document.addEventListener("click", (event) => {
+    const hint = event.target.closest(".empty-connect");
+    if (!hint) return;
+    event.preventDefault();
+    const connect = document.querySelector("#pollinations-connect button")
+      || document.getElementById("pollinations-connect");
+    if (connect && !connect.disabled) connect.click();
+  });
 }
 """
 
@@ -84,6 +93,7 @@ EMPTY_CHAT = """
   <span>✦</span>
   <strong>What should we uncover?</strong>
   <p>Search fresh sources, compare the evidence, or create a polished PDF.</p>
+  <button type="button" class="empty-connect">Connect with Pollinations to begin</button>
   <small>Ctrl + Enter to send</small>
 </div>
 """
@@ -121,11 +131,11 @@ CSS = """
 .panel h3,.panel h4,.panel strong,.panel label,.panel span,.panel p{color:var(--ink)!important}.panel h3{font:600 20px 'Newsreader',Georgia,serif!important;margin:0 0 4px!important}.panel-copy{color:var(--muted);font-size:12px;line-height:1.55;margin-bottom:12px}
 .chat-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:4px 8px 8px;border-bottom:1px solid var(--line)}.chat-heading strong{display:block;color:var(--ink);font:600 19px 'Newsreader',Georgia,serif}.chat-heading span{display:block;color:var(--muted);font-size:11px;margin-top:2px}.chat-heading small{color:var(--sage);background:#edf3ee;border:1px solid #d7e4da;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:700;white-space:nowrap}
 .chatbot,.chatbot>div{background:var(--paper)!important;border:0!important;color:var(--ink)!important}.chatbot{height:clamp(300px,calc(100dvh - 500px),410px)!important;min-height:300px!important;max-height:410px!important;overflow:hidden!important;overscroll-behavior:contain}.chatbot .message{border-radius:16px!important;box-shadow:none!important;font-size:14px!important;line-height:1.6!important}.chatbot .message.user{background:#37322d!important;color:#fff!important}.chatbot .message.user *{color:#fff!important}.chatbot .message.user code{background:#514b45!important;color:#fff!important}.chatbot .message.user a{color:#fff4e9!important;text-decoration:underline!important}.chatbot .message.bot,.chatbot .message.bot *{color:var(--ink)!important}.chatbot .message.bot{background:var(--paper-2)!important;border:1px solid var(--line)!important}.chatbot .message.bot code{background:#e7e2da!important}.chatbot .message.bot a{color:var(--accent-dark)!important}
-.empty-chat{max-width:430px;margin:0 auto;padding:34px 24px;text-align:center;color:var(--muted)}.empty-chat>span{align-items:center;background:var(--accent-soft);border:1px solid #ebc8b8;border-radius:14px;color:var(--accent);display:flex;font-size:22px;height:48px;justify-content:center;margin:0 auto 14px;width:48px}.empty-chat strong{color:var(--ink)!important;display:block;font:600 23px 'Newsreader',Georgia,serif;margin-bottom:7px}.empty-chat p{font-size:12px;line-height:1.55;margin:0 auto;max-width:360px}.empty-chat small{color:#999188;display:block;font-size:10px;font-weight:700;margin-top:13px;text-transform:uppercase;letter-spacing:.06em}
+.empty-chat{align-items:center;box-sizing:border-box;color:var(--muted);display:flex;flex-direction:column;justify-content:center;margin:0 auto;min-height:280px;max-width:430px;padding:34px 24px;text-align:center;width:100%}.empty-chat>span{align-items:center;background:var(--accent-soft);border:1px solid #ebc8b8;border-radius:14px;color:var(--accent);display:flex;font-size:22px;height:48px;justify-content:center;margin:0 auto 14px;width:48px}.empty-chat strong{color:var(--ink)!important;display:block;font:600 23px 'Newsreader',Georgia,serif;margin-bottom:7px;text-align:center}.empty-chat p{font-size:12px;line-height:1.55;margin:0 auto;max-width:360px;text-align:center}.empty-chat small{color:#999188;display:block;font-size:10px;font-weight:700;margin-top:13px;text-transform:uppercase;letter-spacing:.06em}.empty-connect{background:transparent;border:0;color:var(--accent-dark);cursor:pointer;font:700 12px 'DM Sans',sans-serif;margin-top:13px;padding:3px 6px;text-decoration:underline;text-underline-offset:3px}.empty-connect:hover{color:var(--accent)}
 .research-trail{background:#f8f5ef;border:1px solid var(--line);border-radius:11px;margin:0 0 12px;padding:9px 11px}.research-trail summary{color:var(--accent-dark);cursor:pointer;font-size:11px;font-weight:800;list-style:none}.research-trail summary::-webkit-details-marker{display:none}.research-trail ul{color:var(--muted);font-size:11px;line-height:1.55;margin:8px 0 1px;padding-left:18px}
-.composer-row{z-index:8!important;background:var(--paper)!important;border-top:1px solid var(--line)!important;padding:6px 2px 1px!important;gap:8px!important}.composer{border:0!important;background:transparent!important}.composer textarea{font-size:14px!important;line-height:1.45!important;background:#f8f6f1!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:12px!important;padding:10px 12px!important}.send-btn{min-width:122px!important;border:0!important;border-radius:12px!important;background:var(--accent)!important;color:#fff!important;font-weight:700!important;box-shadow:none!important}.send-btn:hover{background:var(--accent-dark)!important}
+.composer-row{align-items:stretch!important;z-index:8!important;background:var(--paper)!important;border-top:1px solid var(--line)!important;padding:6px 2px 1px!important;gap:8px!important}.composer{border:0!important;background:transparent!important;min-height:48px!important}.composer textarea{box-sizing:border-box!important;font-size:14px!important;line-height:1.45!important;background:#f8f6f1!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:12px!important;height:48px!important;min-height:48px!important;padding:12px!important}.send-btn{align-self:stretch!important;height:48px!important;min-height:48px!important;min-width:122px!important;border:0!important;border-radius:12px!important;background:var(--accent)!important;color:#fff!important;font-weight:700!important;box-shadow:none!important}.send-btn:hover{background:var(--accent-dark)!important}
 .new-btn{border:1px solid var(--line)!important;border-radius:12px!important;color:var(--ink)!important;background:var(--paper)!important;font-weight:700!important}.new-btn:hover{border-color:#bcb4a9!important;background:var(--paper-2)!important}
-.oauth-status{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:12px!important;padding:11px 12px!important}.oauth-status p{font-size:12px!important;line-height:1.5!important;margin:0!important}.oauth-actions{background:transparent!important;display:flex!important;flex-direction:column!important;gap:8px!important;margin-top:9px!important;overflow:visible!important}.oauth-actions>*{flex:0 0 auto!important;width:100%!important}.oauth-actions button,.oauth-connect,.oauth-disconnect{border-radius:12px!important;overflow:hidden!important}.oauth-connect{background:var(--accent)!important;color:#fff!important;border:1px solid var(--accent)!important;font-weight:700!important}.oauth-connect:hover{background:var(--accent-dark)!important}.oauth-connect:disabled{background:var(--paper-2)!important;border-color:var(--line)!important;color:var(--muted)!important;opacity:1!important}.oauth-disconnect{margin-top:8px!important;background:var(--paper)!important;color:var(--muted)!important;border:1px solid var(--line)!important}.oauth-disconnect:hover{background:var(--paper-2)!important;color:var(--ink)!important}.oauth-disconnect:disabled{background:var(--paper-2)!important;color:#aaa39b!important;opacity:1!important}
+.oauth-status{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:12px!important;padding:11px 12px!important}.oauth-status p{font-size:12px!important;line-height:1.5!important;margin:0!important}.oauth-actions,.oauth-actions>div,.oauth-actions .block,.oauth-actions .form{background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important}.oauth-actions{display:flex!important;flex-direction:column!important;gap:8px!important;margin-top:9px!important;overflow:visible!important}.oauth-actions>*{flex:0 0 auto!important;width:100%!important}.oauth-actions button,.oauth-connect,.oauth-disconnect{border-radius:12px!important;overflow:hidden!important}.oauth-connect{background:var(--accent)!important;color:#fff!important;border:1px solid var(--accent)!important;font-weight:700!important}.oauth-connect:hover{background:var(--accent-dark)!important}.oauth-connect:disabled{background:var(--paper)!important;border-color:var(--line)!important;color:var(--muted)!important;opacity:1!important}.oauth-disconnect{margin-top:0!important;background:var(--paper)!important;color:var(--muted)!important;border:1px solid var(--line)!important}.oauth-disconnect:hover{background:var(--paper-2)!important;color:var(--ink)!important}.oauth-disconnect:disabled{background:var(--paper)!important;color:#aaa39b!important;opacity:1!important}
 .secondary-card{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:14px!important;box-shadow:0 7px 22px rgba(58,45,34,.04)!important;overflow:hidden!important}.secondary-card>button{padding:13px 15px!important;color:var(--ink)!important;font-weight:700!important}.secondary-card [class*="content"]{padding:0 14px 14px!important}
 .source-panel a,.artifact-panel a{display:block;background:#f8f6f1;border:1px solid var(--line);border-radius:11px;color:var(--ink)!important;margin:8px 0;padding:11px 12px;text-decoration:none!important;font-size:12px;font-weight:650;overflow-wrap:anywhere}.source-panel a:hover{border-color:#bdb4aa;background:#fff}.artifact-panel a{background:var(--accent-soft);border-color:#e7baa7;color:var(--accent-dark)!important}
 .feature-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}.feature-list span{background:#f5f2ec;border:1px solid var(--line);border-radius:9px;padding:9px 10px;color:var(--muted)!important;font-size:11px;font-weight:600}
@@ -273,7 +283,13 @@ def connect_pollinations():
             connected=False,
         )
         return
-    link = html.escape(authorization.verification_uri, quote=True)
+    link = html.escape(
+        verification_url_with_code(
+            authorization.verification_uri,
+            authorization.user_code,
+        ),
+        quote=True,
+    )
     code = html.escape(authorization.user_code)
     yield "", (
         f'<a href="{link}" target="_blank"><strong>Open Pollinations to authorize ↗</strong></a>'
@@ -325,7 +341,7 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                 )
                 prompt = gr.Textbox(
                     placeholder="Ask a question or request a report…", show_label=False,
-                    lines=2, max_lines=7, container=False, elem_classes="composer", scale=8,
+                    lines=1, max_lines=7, container=False, elem_classes="composer", scale=8,
                     interactive=False, render=False, elem_id="research-prompt",
                 )
                 with gr.Row(elem_classes="composer-row"):
@@ -351,6 +367,7 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                 with gr.Column(elem_classes="oauth-actions"):
                     oauth_connect = gr.Button(
                         "Connect with Pollinations", variant="primary", elem_classes="oauth-connect",
+                        elem_id="pollinations-connect",
                     )
                     new_conversation = gr.Button("＋ New conversation", elem_classes="new-btn")
                     oauth_disconnect = gr.Button(

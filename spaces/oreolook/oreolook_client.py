@@ -6,7 +6,7 @@ import json
 import os
 import re
 from typing import Iterable, Iterator, Mapping
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlsplit, urlunsplit
 
 import requests
 
@@ -37,6 +37,16 @@ class DeviceAuthorization:
     verification_uri: str
     interval: int = 5
     expires_in: int = 600
+
+
+def verification_url_with_code(verification_uri: str, user_code: str) -> str:
+    """Return the verification URL with its device code ready to submit."""
+    parts = urlsplit(str(verification_uri))
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["user_code"] = str(user_code).strip()
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
 
 
 def resolve_key(user_key: str | None) -> str:
