@@ -4,14 +4,25 @@ emoji: 🔎
 colorFrom: red
 colorTo: gray
 sdk: gradio
-python_version: "3.11"
+sdk_version: 6.27.0
+python_version: "3.12"
 app_file: app.py
-pinned: false
+pinned: true
 license: mit
-short_description: Live AI search with citations, deep research, and PDF reports.
+short_description: Live AI search with citations, research, and PDF reports.
+thumbnail: https://search.elixpo.com/og-image.png
+tags:
+  - agent
+  - search
+  - deep-research
+  - pollinations
+  - arxiv:2609.05463
 ---
 
 # OreoLook Space
+
+[![Powered by Pollinations](https://img.shields.io/badge/Powered%20by-Pollinations-e53935)](https://pollinations.ai)
+[![Paper](https://img.shields.io/badge/arXiv-2609.05463-b31b1b)](https://arxiv.org/abs/2609.05463)
 
 OreoLook is Pollinations' open-source AI research scout: it searches current
 sources, reads useful pages, streams a grounded answer, preserves same-tab
@@ -21,6 +32,23 @@ The Space is a thin UI. It sends OpenAI-compatible Chat Completions requests to
 `https://gen.pollinations.ai/v1` using the registered OreoLook model. Pollinations
 then delegates the run to OreoLook with a short-lived `ag_` token. The Space
 never requests, receives, displays, stores, or logs that delegated token.
+
+This demo accompanies **“A Three-Layer Caching Architecture for Low-Latency
+LLM Web Search”** by Ayushman Bhattacharya and Nihal Gazi (2026):
+[arXiv:2609.05463](https://arxiv.org/abs/2609.05463) ·
+[Hugging Face Papers](https://huggingface.co/papers/2609.05463). Linking the
+paper here lets Hugging Face associate this Space with the paper's Apps/Demos
+section. OreoLook is developed with and powered by
+[Pollinations AI](https://pollinations.ai).
+
+```bibtex
+@article{bhattacharya2026three,
+  title={A Three-Layer Caching Architecture for Low-Latency LLM Web Search},
+  author={Bhattacharya, Ayushman and Gazi, Nihal},
+  journal={arXiv preprint arXiv:2609.05463},
+  year={2026}
+}
+```
 
 ## Features
 
@@ -66,7 +94,7 @@ network request.
 From this directory:
 
 ```bash
-python3.11 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 export POLLINATIONS_API_KEY="sk_your_normal_key"
@@ -78,19 +106,20 @@ optional; omit it to test the user-supplied-key flow.
 
 ## Deploy
 
-Create a Gradio Space and push the contents of this directory as the Space
-repository root:
+Create the public Space on a personal account using the free ZeroGPU flavor,
+then push this directory as the Space repository root:
 
 ```bash
-git clone https://huggingface.co/spaces/Circuit-Overtime/OreoLook oreolook-space
-cp app.py oreolook_client.py requirements.txt README.md oreolook-space/
-cd oreolook-space
-git add .
-git commit -m "deploy OreoLook Space"
-git push
+hf repos create YOUR_HF_USERNAME/OreoLook --type space --space-sdk gradio \
+  --flavor zero-a10g --public
+hf upload YOUR_HF_USERNAME/OreoLook . --repo-type space \
+  --exclude "**/__pycache__/**"
 ```
 
-The YAML header in this file selects Python 3.11, Gradio, and `app.py`.
+The YAML header selects Python 3.12, Gradio 6.27.0, and `app.py`. The Space
+uses the free-account `zero-a10g` flavor only to satisfy Hugging Face's Gradio
+hosting policy. Its decorated ZeroGPU function is never called; all real work
+is an outbound Pollinations API request, so visitors do not consume GPU quota.
 Hugging Face installs `requirements.txt` automatically. Add the optional demo
 key in the Space settings, never in Git.
 

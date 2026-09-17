@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import os
 
+import spaces
 import gradio as gr
 
 from oreolook_client import OreoLookAPIError, extract_links, stream_completion
@@ -11,6 +12,12 @@ from oreolook_client import OreoLookAPIError, extract_links, stream_completion
 
 SITE_URL = os.getenv("OREOLOOK_SITE_URL", "https://search.elixpo.com")
 KEY_URL = os.getenv("POLLINATIONS_KEY_URL", "https://enter.pollinations.ai")
+
+
+@spaces.GPU(duration=1)
+def _zerogpu_runtime_contract():
+    """ZeroGPU startup contract for a free API-proxy Space; intentionally never called."""
+    return None
 
 
 CSS = """
@@ -55,7 +62,8 @@ def _progress(tasks: list[str], visible: bool) -> str:
     return "**Research trail**\n\n" + "\n\n".join(f"✓ {html.escape(task)}" for task in tasks[-8:])
 
 
-def chat(prompt, messages, api_key, mode, show_tasks):
+def chat(prompt: str, messages: list[dict], api_key: str, mode: str, show_tasks: bool):
+    """Stream an OreoLook research answer with citations and artifact links."""
     prompt = str(prompt or "").strip()
     history = [dict(item) for item in (messages or [])]
     if not prompt:
@@ -89,6 +97,7 @@ def chat(prompt, messages, api_key, mode, show_tasks):
 
 
 def reset_conversation():
+    """Clear only the current browser session's conversation state."""
     return [], [], _progress([], True), *_sources_markdown(""), ""
 
 
@@ -151,10 +160,12 @@ with gr.Blocks(css=CSS, title="OreoLook — AI search with receipts") as demo:
 
     outputs = [chatbot, conversation, progress, sources, artifacts, prompt]
     inputs = [prompt, conversation, api_key, mode, show_tasks]
-    prompt.submit(chat, inputs=inputs, outputs=outputs, concurrency_limit=8)
-    send.click(chat, inputs=inputs, outputs=outputs, concurrency_limit=8)
-    new_conversation.click(reset_conversation, outputs=outputs, queue=False)
+    prompt.submit(chat, inputs=inputs, outputs=outputs, concurrency_limit=8, api_name="research")
+    send.click(chat, inputs=inputs, outputs=outputs, concurrency_limit=8, api_name=False)
+    new_conversation.click(reset_conversation, outputs=outputs, queue=False, api_name="new_conversation")
 
 
 if __name__ == "__main__":
+    # The production OreoLook MCP is hosted at search.elixpo.com/mcp. Keeping
+    # this UI as a plain Gradio app avoids exposing its API-key input as a tool.
     demo.queue(default_concurrency_limit=8, max_size=64).launch()
