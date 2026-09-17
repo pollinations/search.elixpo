@@ -26,7 +26,8 @@ class FakeResponse:
     def __init__(self, lines=(), status=200, payload=None):
         self.lines = list(lines); self.status_code = status; self.closed = False
         self.payload = payload or {}
-    def iter_lines(self, decode_unicode=True):
+    def iter_lines(self, chunk_size=512, decode_unicode=True):
+        assert chunk_size == 1
         assert decode_unicode is True
         return iter(self.lines)
     def json(self): return self.payload
@@ -171,6 +172,10 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert 'gr.Button("Send"' in source
     assert "prompt.submit(" not in source
     assert 'trigger_mode="once"' in source
+    assert "def stage_request(" in source
+    assert "queue=False," in source
+    assert "stage.then(" in source
+    assert "stream_every=0.1" in source
     assert "_model_history" in source
     assert 'class="research-trail"' in source
     assert "yield display, history" not in source

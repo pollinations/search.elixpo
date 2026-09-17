@@ -211,7 +211,12 @@ def stream_completion(
         response.close()
         raise _safe_error(response.status_code)
     try:
-        yield from parse_sse(response.iter_lines(decode_unicode=True))
+        # requests defaults to a 512-byte read buffer. Small SSE frames can sit in
+        # that buffer until the response ends, which makes a streaming UI look
+        # like a single delayed response. Read one line at a time instead.
+        yield from parse_sse(
+            response.iter_lines(chunk_size=1, decode_unicode=True)
+        )
     finally:
         response.close()
 

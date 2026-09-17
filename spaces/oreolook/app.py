@@ -207,26 +207,39 @@ def _request_controls(*, busy: bool):
     )
 
 
-def chat(prompt: str, messages: list[dict], api_key: str, mode: str, show_tasks: bool):
-    """Stream an OreoLook research answer with citations and artifact links."""
+def stage_request(prompt: str, messages: list[dict], show_tasks: bool):
+    """Paint the submitted user turn immediately, before queued research begins."""
     prompt = str(prompt or "").strip()
     display = [dict(item) for item in (messages or [])]
     if not prompt:
-        yield display, display, *_sources_markdown(""), *_request_controls(busy=False)
-        return
-
-    model_messages = _model_history(display)
-    model_messages.append({"role": "user", "content": prompt})
+        return display, display, *_request_controls(busy=False)
     display.append({"role": "user", "content": prompt})
-    tasks: list[str] = []
-    answer = ""
     display.append(
         {
             "role": "assistant",
-            "content": _assistant_message(tasks, answer, show_tasks, active=True),
+            "content": _assistant_message([], "", show_tasks, active=True),
         }
     )
-    yield [*display], [*display], *_sources_markdown(answer), *_request_controls(busy=True)
+    return [*display], [*display], *_request_controls(busy=True)
+
+
+def chat(messages: list[dict], api_key: str, mode: str, show_tasks: bool):
+    """Stream an OreoLook research answer with citations and artifact links."""
+    display = [dict(item) for item in (messages or [])]
+    staged = (
+        len(display) >= 2
+        and display[-2].get("role") == "user"
+        and display[-1].get("role") == "assistant"
+    )
+    if not staged:
+        yield display, display, *_sources_markdown(""), *_request_controls(busy=False)
+        return
+
+    # The last assistant item is UI-only scaffolding created by stage_request.
+    # Exclude it from the provider context, then update that same item in place.
+    model_messages = _model_history(display[:-1])
+    tasks: list[str] = []
+    answer = ""
     try:
         for event in stream_completion(model_messages, api_key=api_key, mode=mode):
             if event.kind == "task":
@@ -386,13 +399,23 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
 
     outputs = [chatbot, conversation, sources, artifacts, prompt, send]
     reset_outputs = [chatbot, conversation, sources, artifacts, prompt]
-    inputs = [prompt, conversation, api_key, mode, show_tasks]
-    send.click(
+    stage = send.click(
+        stage_request,
+        inputs=[prompt, conversation, show_tasks],
+        outputs=[chatbot, conversation, prompt, send],
+        queue=False,
+        trigger_mode="once",
+        show_progress="hidden",
+        api_name=False,
+    )
+    stage.then(
         chat,
-        inputs=inputs,
+        inputs=[conversation, api_key, mode, show_tasks],
         outputs=outputs,
         concurrency_limit=8,
         trigger_mode="once",
+        stream_every=0.1,
+        show_progress="hidden",
         api_name="research",
     )
     new_conversation.click(
