@@ -94,11 +94,11 @@ CSS = """
 .hero-wrap{background:transparent!important;border:0!important;padding:0!important}.hero{width:min(1240px,calc(100% - 48px));margin:0 auto;padding:34px 0 50px;border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(280px,.8fr) minmax(320px,1.2fr);gap:70px;align-items:start}.eyebrow{color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}
 .hero h1{font:600 clamp(34px,4vw,52px)/1.02 'Newsreader',Georgia,serif;letter-spacing:-.045em;color:var(--ink);margin:9px 0 0}.hero h1 em{color:var(--accent);font-style:normal}.hero p{color:var(--muted);font-size:16px;line-height:1.7;max-width:650px;margin:2px 0 0}
 .workspace{width:min(1240px,calc(100% - 48px))!important;max-width:1240px!important;margin:0 auto!important;padding:26px 0 34px!important;gap:20px!important;align-items:flex-start!important}
-.chat-card,.panel{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:18px!important;box-shadow:var(--shadow)!important}.chat-card{padding:10px!important;overflow:hidden;border-radius:22px!important}.panel{padding:16px!important;box-shadow:0 9px 32px rgba(58,45,34,.055)!important}
+.chat-card,.panel{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:18px!important;box-shadow:var(--shadow)!important}.chat-card{padding:10px!important;overflow:hidden;border-radius:22px!important;position:relative!important}.panel{padding:16px!important;box-shadow:0 9px 32px rgba(58,45,34,.055)!important}
 .panel h3,.panel h4,.panel strong,.panel label,.panel span,.panel p{color:var(--ink)!important}.panel h3{font:600 20px 'Newsreader',Georgia,serif!important;margin:0 0 4px!important}.panel-copy{color:var(--muted);font-size:12px;line-height:1.55;margin-bottom:12px}
 .chat-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:7px 10px 13px;border-bottom:1px solid var(--line)}.chat-heading strong{display:block;color:var(--ink);font:600 19px 'Newsreader',Georgia,serif}.chat-heading span{display:block;color:var(--muted);font-size:11px;margin-top:2px}.chat-heading small{color:var(--sage);background:#edf3ee;border:1px solid #d7e4da;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:700;white-space:nowrap}
-.chatbot,.chatbot>div{background:var(--paper)!important;border:0!important;color:var(--ink)!important}.chatbot{height:clamp(500px,calc(100dvh - 285px),720px)!important}.chatbot .message{border-radius:16px!important;box-shadow:none!important;font-size:14px!important;line-height:1.6!important}.chatbot .message.user{background:#37322d!important;color:#fff!important}.chatbot .message.user *{color:#fff!important}.chatbot .message.user code{background:#514b45!important;color:#fff!important}.chatbot .message.user a{color:#fff4e9!important;text-decoration:underline!important}.chatbot .message.bot,.chatbot .message.bot *{color:var(--ink)!important}.chatbot .message.bot{background:var(--paper-2)!important;border:1px solid var(--line)!important}.chatbot .message.bot code{background:#e7e2da!important}.chatbot .message.bot a{color:var(--accent-dark)!important}
-.composer-row{border-top:1px solid var(--line)!important;padding:10px 4px 2px!important;gap:9px!important}.composer{border:0!important;background:transparent!important}.composer textarea{font-size:15px!important;line-height:1.5!important;background:#f8f6f1!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:13px!important;padding:13px 14px!important}.send-btn{min-width:122px!important;border:0!important;border-radius:13px!important;background:var(--accent)!important;color:#fff!important;font-weight:700!important;box-shadow:none!important}.send-btn:hover{background:var(--accent-dark)!important}
+.chatbot,.chatbot>div{background:var(--paper)!important;border:0!important;color:var(--ink)!important}.chatbot{height:clamp(400px,calc(100dvh - 390px),560px)!important;overflow-y:auto!important;overscroll-behavior:contain}.chatbot .message{border-radius:16px!important;box-shadow:none!important;font-size:14px!important;line-height:1.6!important}.chatbot .message.user{background:#37322d!important;color:#fff!important}.chatbot .message.user *{color:#fff!important}.chatbot .message.user code{background:#514b45!important;color:#fff!important}.chatbot .message.user a{color:#fff4e9!important;text-decoration:underline!important}.chatbot .message.bot,.chatbot .message.bot *{color:var(--ink)!important}.chatbot .message.bot{background:var(--paper-2)!important;border:1px solid var(--line)!important}.chatbot .message.bot code{background:#e7e2da!important}.chatbot .message.bot a{color:var(--accent-dark)!important}
+.composer-row{position:sticky!important;bottom:0!important;z-index:8!important;background:var(--paper)!important;border-top:1px solid var(--line)!important;padding:10px 4px 2px!important;gap:9px!important}.composer{border:0!important;background:transparent!important}.composer textarea{font-size:15px!important;line-height:1.5!important;background:#f8f6f1!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:13px!important;padding:13px 14px!important}.send-btn{min-width:122px!important;border:0!important;border-radius:13px!important;background:var(--accent)!important;color:#fff!important;font-weight:700!important;box-shadow:none!important}.send-btn:hover{background:var(--accent-dark)!important}
 .new-btn{border:1px solid var(--line)!important;border-radius:11px!important;color:var(--ink)!important;background:var(--paper)!important;font-weight:700!important}.new-btn:hover{border-color:#bcb4a9!important;background:var(--paper-2)!important}
 .oauth-status{background:#f8f6f1!important;border:1px solid var(--line)!important;border-radius:11px!important;padding:11px 12px!important}.oauth-status p{font-size:12px!important;line-height:1.5!important;margin:0!important}.oauth-actions{gap:10px!important;margin-top:9px!important;align-items:stretch!important}.oauth-actions>*{flex:1 1 0!important}.oauth-connect{background:var(--accent)!important;color:#fff!important;border:0!important;font-weight:700!important}.oauth-connect:hover{background:var(--accent-dark)!important}.oauth-disconnect{margin-top:8px!important;background:transparent!important;color:var(--muted)!important;border:1px solid var(--line)!important}.oauth-disconnect:hover{background:var(--paper-2)!important;color:var(--ink)!important}.session-actions{gap:10px!important;margin-top:9px!important;align-items:stretch!important}.session-actions>*{flex:1 1 0!important}
 .secondary-card{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:14px!important;box-shadow:0 7px 22px rgba(58,45,34,.04)!important;overflow:hidden!important}.secondary-card>button{padding:13px 15px!important;color:var(--ink)!important;font-weight:700!important}.secondary-card [class*="content"]{padding:0 14px 14px!important}
@@ -107,8 +107,8 @@ CSS = """
 .feature-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}.feature-list span{background:#f5f2ec;border:1px solid var(--line);border-radius:9px;padding:9px 10px;color:var(--muted)!important;font-size:11px;font-weight:600}
 #examples{border:0!important;background:transparent!important;margin:7px 3px 2px!important;padding:0!important}#examples>div:first-child{display:none!important}#examples button{background:var(--paper-2)!important;border:1px solid var(--line)!important;border-radius:999px!important;color:var(--muted)!important;font-size:11px!important;padding:7px 12px!important}#examples button:hover{border-color:#bdb4aa!important;color:var(--ink)!important;background:var(--paper)!important}
 .footer-note{text-align:center;color:#928b82;font-size:11px;padding:0 20px 28px}.footer-note a{color:var(--accent-dark)!important;text-decoration:none!important;font-weight:700}
-@media(max-width:960px){.workspace{flex-direction:column!important}.workspace>div{width:100%!important;min-width:0!important}.research-rail{display:grid!important;grid-template-columns:1fr 1fr!important}.hero{grid-template-columns:1fr;gap:18px}.hero h1{font-size:44px}.chatbot{height:clamp(460px,calc(100dvh - 260px),650px)!important}}
-@media(max-width:640px){.topbar,.hero,.workspace{width:calc(100% - 26px)!important}.topbar{min-height:62px}.toplinks a:not(:first-child){display:none}.workspace{padding-top:14px!important}.hero{padding:28px 0 34px}.hero h1{font-size:37px}.hero p{font-size:14px}.research-rail{display:flex!important}.chatbot{height:clamp(390px,calc(100dvh - 240px),570px)!important}.chat-heading small{display:none}.send-btn{min-width:82px!important}.composer-row{align-items:stretch!important}.feature-list{grid-template-columns:1fr}}
+@media(max-width:960px){.workspace{flex-direction:column!important}.workspace>div{width:100%!important;min-width:0!important}.research-rail{display:grid!important;grid-template-columns:1fr 1fr!important}.hero{grid-template-columns:1fr;gap:18px}.hero h1{font-size:44px}.chatbot{height:clamp(400px,calc(100dvh - 350px),540px)!important}}
+@media(max-width:640px){.topbar,.hero,.workspace{width:calc(100% - 26px)!important}.topbar{min-height:62px}.toplinks a:not(:first-child){display:none}.workspace{padding-top:14px!important}.hero{padding:28px 0 34px}.hero h1{font-size:37px}.hero p{font-size:14px}.research-rail{display:flex!important}.chatbot{height:clamp(340px,calc(100dvh - 330px),480px)!important}.chat-heading small{display:none}.send-btn{min-width:82px!important}.composer-row{align-items:stretch!important}.feature-list{grid-template-columns:1fr}}
 """
 
 
@@ -232,16 +232,11 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                     ),
                     elem_classes="chatbot",
                 )
-                with gr.Row(elem_classes="composer-row"):
-                    prompt = gr.Textbox(
-                        placeholder="What should OreoLook investigate?", show_label=False,
-                        lines=2, max_lines=7, container=False, elem_classes="composer", scale=8,
-                        interactive=False,
-                    )
-                    send = gr.Button(
-                        "Ask OreoLook", variant="primary", elem_classes="send-btn", scale=1,
-                        interactive=False,
-                    )
+                prompt = gr.Textbox(
+                    placeholder="What should OreoLook investigate?", show_label=False,
+                    lines=2, max_lines=7, container=False, elem_classes="composer", scale=8,
+                    interactive=False, render=False,
+                )
                 gr.Examples(
                     examples=[
                         "What changed in AI today? Cite the original sources.",
@@ -250,6 +245,12 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                         "Create a PDF briefing on this week's major space-technology news.",
                     ], inputs=prompt, label="Start with an example", elem_id="examples",
                 )
+                with gr.Row(elem_classes="composer-row"):
+                    prompt.render()
+                    send = gr.Button(
+                        "Ask OreoLook", variant="primary", elem_classes="send-btn", scale=1,
+                        interactive=False,
+                    )
         with gr.Column(scale=3, min_width=290, elem_classes="research-rail"):
             with gr.Group(elem_classes="panel"):
                 oauth_status = gr.Markdown(
@@ -291,4 +292,6 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
 if __name__ == "__main__":
     # The production OreoLook MCP is hosted at search.elixpo.com/mcp. Keeping
     # this UI as a plain Gradio app avoids exposing its API-key input as a tool.
-    demo.queue(default_concurrency_limit=8, max_size=64).launch(css=CSS, head=SEO_HEAD)
+    demo.queue(default_concurrency_limit=8, max_size=64).launch(
+        css=CSS, head=SEO_HEAD, ssr_mode=False,
+    )

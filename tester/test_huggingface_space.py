@@ -132,7 +132,7 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert 'elem_classes="research-rail"' in source
     assert 'rel="canonical"' in source
     assert 'type="application/ld+json"' in source
-    assert ".launch(css=CSS, head=SEO_HEAD)" in source
+    assert "css=CSS, head=SEO_HEAD, ssr_mode=False" in source
     assert 'APP_KEY = os.getenv("OREOLOOK_APP_KEY"' in source
     assert 'api_key = gr.State("")' in source
     assert 'mode = gr.State("Auto")' in source
@@ -148,3 +148,5 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert source.index('elem_classes="workspace"') < source.index(
         'elem_classes="hero-wrap"'
     )
+    assert "position:sticky!important;bottom:0!important" in source
+    assert "interactive=False, render=False" in source
