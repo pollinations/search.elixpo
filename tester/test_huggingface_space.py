@@ -142,7 +142,9 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert "Get an API key" not in source
     assert "POLLINATIONS_KEY_URL" not in source
     assert ".chatbot .message.user *" in source
-    assert "outputs=[api_key, oauth_status, prompt, send]" in source
+    assert "oauth_connect, oauth_disconnect," in source
+    assert '"Disconnect account", elem_classes="oauth-disconnect",' in source
+    assert "interactive=False," in source
     assert 'Enter code <code>' not in source
     assert 'Enter code <strong>{code}</strong>' in source
     assert "Session controls" not in source

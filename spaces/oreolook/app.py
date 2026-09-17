@@ -176,9 +176,17 @@ def reset_conversation():
     return [], [], _progress([], True), *_sources_markdown(""), ""
 
 
-def _research_controls(enabled: bool):
-    """Return Gradio 6 component updates for the OAuth-gated composer."""
-    return gr.Textbox(interactive=enabled), gr.Button(interactive=enabled)
+def _oauth_controls(*, connected: bool, authorizing: bool = False):
+    """Return Gradio 6 updates for the composer and OAuth actions."""
+    return (
+        gr.Textbox(interactive=connected),
+        gr.Button("Ask OreoLook", interactive=connected),
+        gr.Button(
+            "Connect with Pollinations",
+            interactive=not connected and not authorizing,
+        ),
+        gr.Button("Disconnect account", interactive=connected),
+    )
 
 
 def connect_pollinations():
@@ -186,31 +194,42 @@ def connect_pollinations():
     try:
         authorization = begin_device_authorization(APP_KEY)
     except OreoLookAPIError as exc:
-        yield "", f"**Sign-in unavailable:** {html.escape(str(exc))}", *_research_controls(False)
+        yield "", f"**Sign-in unavailable:** {html.escape(str(exc))}", *_oauth_controls(
+            connected=False,
+        )
         return
     link = html.escape(authorization.verification_uri, quote=True)
     code = html.escape(authorization.user_code)
     yield "", (
         f'<a href="{link}" target="_blank"><strong>Open Pollinations to authorize ↗</strong></a>'
         f"<br>Enter code <strong>{code}</strong>. This page will connect automatically."
-    ), *_research_controls(False)
+    ), *_oauth_controls(connected=False, authorizing=True)
     deadline = time.monotonic() + authorization.expires_in
     while time.monotonic() < deadline:
         time.sleep(authorization.interval)
         try:
             token = poll_device_authorization(authorization.device_code)
         except OreoLookAPIError as exc:
-            yield "", f"**Sign-in stopped:** {html.escape(str(exc))}", *_research_controls(False)
+            yield "", f"**Sign-in stopped:** {html.escape(str(exc))}", *_oauth_controls(
+                connected=False,
+            )
             return
         if token:
-            yield token, "**Connected to Pollinations.** Research is unlocked and requests use your approved budget.", *_research_controls(True)
+            yield token, (
+                "**Connected to Pollinations.** Research is unlocked and requests "
+                "use your approved budget."
+            ), *_oauth_controls(connected=True)
             return
-    yield "", "**Sign-in code expired.** Select Connect with Pollinations to start again.", *_research_controls(False)
+    yield "", (
+        "**Sign-in code expired.** Select Connect with Pollinations to start again."
+    ), *_oauth_controls(connected=False)
 
 
 def disconnect_pollinations():
     """Forget the user-scoped Pollinations key held in this browser session."""
-    return "", "Connect with Pollinations to unlock research. No API key pasting required.", *_research_controls(False)
+    return "", (
+        "Connect with Pollinations to unlock research. No API key pasting required."
+    ), *_oauth_controls(connected=False)
 
 
 with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
@@ -262,7 +281,10 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                         "Connect with Pollinations", variant="primary", elem_classes="oauth-connect",
                     )
                     new_conversation = gr.Button("＋ New conversation", elem_classes="new-btn")
-                oauth_disconnect = gr.Button("Disconnect account", elem_classes="oauth-disconnect")
+                oauth_disconnect = gr.Button(
+                    "Disconnect account", elem_classes="oauth-disconnect",
+                    interactive=False,
+                )
                 show_tasks = gr.Checkbox(value=True, label="Show research progress")
             progress = gr.Markdown(_progress([], True), elem_classes="progress-card")
             with gr.Accordion("Sources", open=False, elem_classes="secondary-card"):
@@ -280,11 +302,17 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
     send.click(chat, inputs=inputs, outputs=outputs, concurrency_limit=8, api_name=False)
     new_conversation.click(reset_conversation, outputs=outputs, queue=False, api_name="new_conversation")
     oauth_connect.click(
-        connect_pollinations, outputs=[api_key, oauth_status, prompt, send],
+        connect_pollinations,
+        outputs=[
+            api_key, oauth_status, prompt, send, oauth_connect, oauth_disconnect,
+        ],
         concurrency_limit=4, api_name=False,
     )
     oauth_disconnect.click(
-        disconnect_pollinations, outputs=[api_key, oauth_status, prompt, send],
+        disconnect_pollinations,
+        outputs=[
+            api_key, oauth_status, prompt, send, oauth_connect, oauth_disconnect,
+        ],
         queue=False, api_name=False,
     )
 
