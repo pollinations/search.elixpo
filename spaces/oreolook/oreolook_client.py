@@ -47,7 +47,7 @@ def resolve_key(user_key: str | None) -> str:
         )
     if key.startswith("ag_"):
         raise OreoLookAPIError(
-            "Agent-run tokens are internal and cannot be used here. Enter a normal Pollinations API key."
+            "Agent-run tokens are internal. Reconnect with Pollinations to continue."
         )
     return key
 
@@ -130,14 +130,14 @@ def _mode_prompt(prompt: str, mode: str) -> str:
 
 def _safe_error(status: int) -> OreoLookAPIError:
     messages = {
-        401: "That Pollinations API key was not accepted. Check the key and try again.",
-        403: "This key cannot access OreoLook yet. Check its permissions or model availability.",
+        401: "Your Pollinations connection was not accepted or has expired. Reconnect and try again.",
+        403: "Your connected Pollinations account cannot access OreoLook yet. Check its approved budget or model access.",
         429: "OreoLook is getting a lot of love right now. Please wait a moment and retry.",
     }
     if status in messages:
         return OreoLookAPIError(messages[status])
     if status >= 500:
-        return OreoLookAPIError("OreoLook's upstream is having a wobble. Please try again shortly.")
+        return OreoLookAPIError("OreoLook's research service is temporarily unavailable. Your connection is fine—please retry shortly.")
     return OreoLookAPIError(f"The request could not be completed (HTTP {status}).")
 
 

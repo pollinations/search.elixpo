@@ -112,7 +112,7 @@ def test_citations_and_pdf_artifacts_are_deduplicated_and_separated():
 
 
 @pytest.mark.parametrize("status, phrase", [
-    (401, "not accepted"), (403, "cannot access"), (429, "lot of love"), (503, "wobble"),
+    (401, "not accepted"), (403, "cannot access"), (429, "lot of love"), (503, "temporarily unavailable"),
 ])
 def test_upstream_failures_are_safe(status, phrase):
     session = FakeSession(FakeResponse(status=status))
@@ -139,3 +139,7 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert "gr.Radio(" not in source
     assert 'gr.Accordion("Sources", open=False' in source
     assert 'gr.Accordion("Downloads", open=False' in source
+    assert "Get an API key" not in source
+    assert "POLLINATIONS_KEY_URL" not in source
+    assert ".chatbot .message.user *" in source
+    assert "outputs=[api_key, oauth_status, prompt, send]" in source

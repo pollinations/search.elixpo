@@ -18,7 +18,6 @@ from oreolook_client import (
 
 
 SITE_URL = os.getenv("OREOLOOK_SITE_URL", "https://search.elixpo.com")
-KEY_URL = os.getenv("POLLINATIONS_KEY_URL", "https://enter.pollinations.ai")
 APP_KEY = os.getenv("OREOLOOK_APP_KEY", "").strip()
 SPACE_URL = os.getenv("OREOLOOK_SPACE_URL", "https://huggingface.co/spaces/Elixpo/OreoLook")
 OG_IMAGE_URL = os.getenv("OREOLOOK_OG_IMAGE_URL", f"{SITE_URL}/og-image.png")
@@ -97,11 +96,10 @@ CSS = """
 .workspace{width:min(1240px,calc(100% - 48px))!important;max-width:1240px!important;margin:0 auto!important;padding:0 0 42px!important;gap:20px!important;align-items:flex-start!important}
 .chat-card,.panel{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:18px!important;box-shadow:var(--shadow)!important}.chat-card{padding:10px!important;overflow:hidden}.panel{padding:18px!important;box-shadow:0 9px 32px rgba(58,45,34,.055)!important}
 .panel h3,.panel h4,.panel strong,.panel label,.panel span,.panel p{color:var(--ink)!important}.panel h3{font:600 20px 'Newsreader',Georgia,serif!important;margin:0 0 4px!important}.panel-copy{color:var(--muted);font-size:12px;line-height:1.55;margin-bottom:12px}
-.chatbot,.chatbot>div{background:var(--paper)!important;border:0!important;color:var(--ink)!important}.chatbot{height:clamp(390px,calc(100dvh - 365px),650px)!important}.chatbot .message{border-radius:16px!important;box-shadow:none!important;font-size:14px!important;line-height:1.6!important}.chatbot .message.user{background:#37322d!important;color:#fff!important}.chatbot .message.bot{background:var(--paper-2)!important;border:1px solid var(--line)!important;color:var(--ink)!important}
+.chatbot,.chatbot>div{background:var(--paper)!important;border:0!important;color:var(--ink)!important}.chatbot{height:clamp(390px,calc(100dvh - 365px),650px)!important}.chatbot .message{border-radius:16px!important;box-shadow:none!important;font-size:14px!important;line-height:1.6!important}.chatbot .message.user{background:#37322d!important;color:#fff!important}.chatbot .message.user *{color:#fff!important}.chatbot .message.user code{background:#514b45!important;color:#fff!important}.chatbot .message.user a{color:#fff4e9!important;text-decoration:underline!important}.chatbot .message.bot,.chatbot .message.bot *{color:var(--ink)!important}.chatbot .message.bot{background:var(--paper-2)!important;border:1px solid var(--line)!important}.chatbot .message.bot code{background:#e7e2da!important}.chatbot .message.bot a{color:var(--accent-dark)!important}
 .composer-row{border-top:1px solid var(--line)!important;padding:10px 4px 2px!important;gap:9px!important}.composer{border:0!important;background:transparent!important}.composer textarea{font-size:15px!important;line-height:1.5!important;background:#f8f6f1!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:13px!important;padding:13px 14px!important}.send-btn{min-width:122px!important;border:0!important;border-radius:13px!important;background:var(--accent)!important;color:#fff!important;font-weight:700!important;box-shadow:none!important}.send-btn:hover{background:var(--accent-dark)!important}
 .new-btn{border:1px solid var(--line)!important;border-radius:11px!important;color:var(--ink)!important;background:var(--paper)!important;font-weight:700!important}.new-btn:hover{border-color:#bcb4a9!important;background:var(--paper-2)!important}
-.oauth-status{background:#f8f6f1!important;border:1px solid var(--line)!important;border-radius:11px!important;padding:11px 12px!important}.oauth-status p{font-size:12px!important;line-height:1.5!important;margin:0!important}.oauth-actions{gap:8px!important}.oauth-connect{background:var(--accent)!important;color:#fff!important;border:0!important;font-weight:700!important}.oauth-disconnect{background:transparent!important;color:var(--muted)!important;border:1px solid var(--line)!important}
-.session-actions{gap:10px!important;margin-top:9px!important;align-items:stretch!important}.session-actions>*{flex:1 1 0!important}.key-link{padding:0!important;border:0!important;background:transparent!important}.key-link a{display:flex;align-items:center;justify-content:center;min-height:42px;padding:9px 12px;border:1px solid var(--line);border-radius:11px;background:var(--paper);color:var(--accent-dark)!important;text-decoration:none!important;font-size:12px;font-weight:700;text-align:center}.key-link a:hover{background:var(--accent-soft);border-color:#e7baa7}
+.oauth-status{background:#f8f6f1!important;border:1px solid var(--line)!important;border-radius:11px!important;padding:11px 12px!important}.oauth-status p{font-size:12px!important;line-height:1.5!important;margin:0!important}.oauth-actions{gap:10px!important;margin-top:9px!important;align-items:stretch!important}.oauth-actions>*{flex:1 1 0!important}.oauth-connect{background:var(--accent)!important;color:#fff!important;border:0!important;font-weight:700!important}.oauth-connect:hover{background:var(--accent-dark)!important}.oauth-disconnect{margin-top:8px!important;background:transparent!important;color:var(--muted)!important;border:1px solid var(--line)!important}.oauth-disconnect:hover{background:var(--paper-2)!important;color:var(--ink)!important}.session-actions{gap:10px!important;margin-top:9px!important;align-items:stretch!important}.session-actions>*{flex:1 1 0!important}
 .secondary-card{background:var(--paper)!important;border:1px solid var(--line)!important;border-radius:14px!important;box-shadow:0 7px 22px rgba(58,45,34,.04)!important;overflow:hidden!important}.secondary-card>button{padding:13px 15px!important;color:var(--ink)!important;font-weight:700!important}.secondary-card [class*="content"]{padding:0 14px 14px!important}
 .progress-card{background:#37322d!important;border:0!important;border-radius:14px!important;color:#f7f2eb!important;padding:12px 15px!important}.progress-card p,.progress-card strong{color:#f7f2eb!important;font-size:12px!important;margin:0!important}
 .source-panel a,.artifact-panel a{display:block;background:#f8f6f1;border:1px solid var(--line);border-radius:11px;color:var(--ink)!important;margin:8px 0;padding:11px 12px;text-decoration:none!important;font-size:12px;font-weight:650;overflow-wrap:anywhere}.source-panel a:hover{border-color:#bdb4aa;background:#fff}.artifact-panel a{background:var(--accent-soft);border-color:#e7baa7;color:var(--accent-dark)!important}
@@ -177,36 +175,41 @@ def reset_conversation():
     return [], [], _progress([], True), *_sources_markdown(""), ""
 
 
+def _research_controls(enabled: bool):
+    """Return Gradio 6 component updates for the OAuth-gated composer."""
+    return gr.Textbox(interactive=enabled), gr.Button(interactive=enabled)
+
+
 def connect_pollinations():
     """Authorize one browser session to spend the user's own Pollinations Pollen."""
     try:
         authorization = begin_device_authorization(APP_KEY)
     except OreoLookAPIError as exc:
-        yield "", f"**Sign-in unavailable:** {html.escape(str(exc))}"
+        yield "", f"**Sign-in unavailable:** {html.escape(str(exc))}", *_research_controls(False)
         return
     link = html.escape(authorization.verification_uri, quote=True)
     code = html.escape(authorization.user_code)
     yield "", (
         f'<a href="{link}" target="_blank"><strong>Open Pollinations to authorize ↗</strong></a>'
         f"<br>Enter code <code>{code}</code>. This page will connect automatically."
-    )
+    ), *_research_controls(False)
     deadline = time.monotonic() + authorization.expires_in
     while time.monotonic() < deadline:
         time.sleep(authorization.interval)
         try:
             token = poll_device_authorization(authorization.device_code)
         except OreoLookAPIError as exc:
-            yield "", f"**Sign-in stopped:** {html.escape(str(exc))}"
+            yield "", f"**Sign-in stopped:** {html.escape(str(exc))}", *_research_controls(False)
             return
         if token:
-            yield token, "**Connected to Pollinations.** Requests use your account and approved budget."
+            yield token, "**Connected to Pollinations.** Research is unlocked and requests use your approved budget.", *_research_controls(True)
             return
-    yield "", "**Sign-in code expired.** Select Connect with Pollinations to start again."
+    yield "", "**Sign-in code expired.** Select Connect with Pollinations to start again.", *_research_controls(False)
 
 
 def disconnect_pollinations():
     """Forget the user-scoped Pollinations key held in this browser session."""
-    return "", "Not connected. Connect your Pollinations account to search."
+    return "", "Connect with Pollinations to unlock research. No API key pasting required.", *_research_controls(False)
 
 
 with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
@@ -232,8 +235,12 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                     prompt = gr.Textbox(
                         placeholder="What should OreoLook investigate?", show_label=False,
                         lines=2, max_lines=7, container=False, elem_classes="composer", scale=8,
+                        interactive=False,
                     )
-                    send = gr.Button("Ask OreoLook", variant="primary", elem_classes="send-btn", scale=1)
+                    send = gr.Button(
+                        "Ask OreoLook", variant="primary", elem_classes="send-btn", scale=1,
+                        interactive=False,
+                    )
             gr.Examples(
                 examples=[
                     "What changed in AI today? Cite the original sources.",
@@ -247,20 +254,15 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                 gr.HTML('<h3>Session controls</h3><div class="panel-copy">OreoLook automatically chooses the right research depth for each question.</div>')
                 show_tasks = gr.Checkbox(value=True, label="Show task progress")
                 oauth_status = gr.Markdown(
-                    "Not connected. Connect your Pollinations account to search.",
+                    "Connect with Pollinations to unlock research. No API key pasting required.",
                     elem_classes="oauth-status",
                 )
                 with gr.Row(elem_classes="oauth-actions"):
                     oauth_connect = gr.Button(
                         "Connect with Pollinations", variant="primary", elem_classes="oauth-connect",
                     )
-                    oauth_disconnect = gr.Button("Disconnect", elem_classes="oauth-disconnect")
-                with gr.Row(elem_classes="session-actions"):
-                    gr.HTML(
-                        f'<a href="{KEY_URL}" target="_blank">Get an API key ↗</a>',
-                        elem_classes="key-link",
-                    )
                     new_conversation = gr.Button("＋ New conversation", elem_classes="new-btn")
+                oauth_disconnect = gr.Button("Disconnect account", elem_classes="oauth-disconnect")
             progress = gr.Markdown(_progress([], True), elem_classes="progress-card")
             with gr.Accordion("Sources", open=False, elem_classes="secondary-card"):
                 sources = gr.Markdown(_sources_markdown("")[0], elem_classes="source-panel")
@@ -276,11 +278,11 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
     send.click(chat, inputs=inputs, outputs=outputs, concurrency_limit=8, api_name=False)
     new_conversation.click(reset_conversation, outputs=outputs, queue=False, api_name="new_conversation")
     oauth_connect.click(
-        connect_pollinations, outputs=[api_key, oauth_status],
+        connect_pollinations, outputs=[api_key, oauth_status, prompt, send],
         concurrency_limit=4, api_name=False,
     )
     oauth_disconnect.click(
-        disconnect_pollinations, outputs=[api_key, oauth_status],
+        disconnect_pollinations, outputs=[api_key, oauth_status, prompt, send],
         queue=False, api_name=False,
     )
 
