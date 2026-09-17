@@ -169,6 +169,7 @@ def test_space_uses_gradio_6_app_level_and_chatbot_apis():
     assert "placeholder=EMPTY_CHAT" in source
     assert 'elem_id="research-prompt"' in source
     assert 'elem_id="research-send"' in source
+    assert 'elem_id="research-chat"' in source
     assert 'gr.Button("Send"' in source
     assert "prompt.submit(" not in source
     assert 'trigger_mode="once"' in source

@@ -350,7 +350,7 @@ with gr.Blocks(title="OreoLook — AI search with receipts") as demo:
                 chatbot = gr.Chatbot(
                     value=[], height=360, min_height=280, max_height=410, show_label=False,
                     placeholder=EMPTY_CHAT,
-                    elem_classes="chatbot",
+                    elem_classes="chatbot", elem_id="research-chat",
                 )
                 prompt = gr.Textbox(
                     placeholder="Ask a question or request a report…", show_label=False,
