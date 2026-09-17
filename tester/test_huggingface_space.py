@@ -91,7 +91,6 @@ def test_device_verification_url_prefills_and_preserves_query():
     [
         ("Quick Search", "Use quick search"),
         ("Deep Research", "Use deep research"),
-        ("Auto", "Choose the appropriate research depth"),
     ],
 )
 def test_stream_calls_pollinations_without_persisting_or_exposing_key(mode, instruction):
@@ -110,6 +109,24 @@ def test_stream_calls_pollinations_without_persisting_or_exposing_key(mode, inst
     assert "sk_private" not in json.dumps(call["json"])
     assert messages == [{"role": "user", "content": "What changed today?"}]
     assert response.closed is True
+
+
+def test_auto_mode_preserves_exact_followup_and_prior_turns():
+    response = FakeResponse([event("Bring one."), "data: [DONE]"])
+    session = FakeSession(response)
+    messages = [
+        {"role": "user", "content": "What is the weather in Kolkata?"},
+        {"role": "assistant", "content": "Rain is expected in Kolkata this afternoon."},
+        {"role": "user", "content": "aah! so shall I carry an umbrella?"},
+    ]
+
+    assert [item.content for item in stream_completion(
+        messages, api_key="sk_private", mode="Auto", session=session,
+    )] == ["Bring one."]
+
+    outbound = session.calls[0][1]["json"]["messages"]
+    assert outbound == messages
+    assert "Choose the appropriate research depth" not in json.dumps(outbound)
 
 
 def test_citations_and_pdf_artifacts_are_deduplicated_and_separated():

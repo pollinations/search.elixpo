@@ -132,10 +132,12 @@ def _mode_prompt(prompt: str, mode: str) -> str:
             "Use quick search for this request. Prefer a fast, focused search with a concise cited answer.\n\n"
             + prompt.strip()
         )
-    return (
-        "Choose the appropriate research depth for this request. Use the least work needed for a reliable "
-        "answer, but investigate multiple angles when the question genuinely requires it.\n\n" + prompt.strip()
-    )
+    # Auto is the normal Space path. Keep the user's exact turn intact so an
+    # elliptical follow-up ("so should I...?", "what about tomorrow?", etc.)
+    # can be resolved against the preceding assistant answer. Injecting routing
+    # prose into the user turn makes that prose look like the primary request
+    # and can overpower otherwise valid conversation history.
+    return prompt.strip()
 
 
 def _safe_error(status: int) -> OreoLookAPIError:
