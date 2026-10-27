@@ -45,7 +45,7 @@ curl http://localhost/api/health         # via nginx
 
 ### Network topology
 
-All internal services communicate over a private Docker network (`elixpo-network`). None of the internal 9xxx ports are published to the host — they are only reachable within the Docker network (via `expose`). The only externally reachable entry point is nginx.
+Internal services communicate over a private Docker network (`elixpo-network`). The render service sits alone on a second network, `render-network` (172.31.250.0/24, bridge `br-oreo-render`), which only `lixsearch-app` also joins. None of the internal 9xxx ports are published to the host — they are only reachable within the Docker network (via `expose`). The only externally reachable entry point is nginx.
 
 ```
 Internet → Cloudflare → search.elixpo.com
@@ -69,6 +69,10 @@ Internet → Cloudflare → search.elixpo.com
                  │     ├── RAG (ragService/)
                  │     └── LLM inference → Pollinations API (external)
                  ├── Session/cache (sessions/, ragService/cacheCoordinator.py)
+                 ├── Render client (searching/scrape.py, X-Render-Token)
+                 │     └─[render-network]→ render-service (:9520, singleton)
+                 │           ├── Chromium, fresh context per render (screenshot/waitFor/fallback)
+                 │           └── egress proxy (127.0.0.1) → public IPs only, ports 80/443
                  └── IPC client → ipc-service (:9510, singleton)
                                     ├── CoreEmbeddingService (sentence-transformers)
                                     ├── SearchAgentPool (Playwright text + image agents)
@@ -85,7 +89,8 @@ Redis (:9530) shared across all containers:
 |---------|--------------|-------------------|---------|
 | nginx | 80, 443, 10001 | **Yes** — 80:80, 443:443, 10001:10001 | Only external entry point |
 | lixsearch-app | 9002 | No (`expose` only) | Quart API workers |
-| ipc-service | 9510 | No (`expose` only) | Embedding model + Playwright pool |
+| ipc-service | 9510 | No (`expose` only) | Embedding model + Playwright search agents |
+| render-service | 9520 | No (`expose` only, render-network only) | Scrape page rendering (Playwright behind egress proxy) |
 | chroma-server | 9001 | No (`expose` only) | Vector DB |
 | redis | 9530 | No (`expose` only) | Cache (3 DBs) |
 
@@ -146,6 +151,7 @@ User → Cloudflare → nginx:10001 (API key check) → app:9002 → gateway (se
 | nginx | 1 | 80, 443, 10001 | Yes (host-bound) | no |
 | lixsearch-app | 1-5 (autoscale) | 9002 | No (internal) | no (shared volumes) |
 | ipc-service | 1 | 9510 | No (internal) | no |
+| render-service | 1 | 9520 | No (render-network only) | no |
 | chroma-server | 1 | 9001 | No (internal) | yes (embeddings-data) |
 | redis | 1 | 9530 | No (internal) | yes (redis-data) |
 
@@ -253,7 +259,7 @@ wrangler secret put SSO_CLIENT_SECRET        # OAuth client secret from accounts
 ## Environment Variables
 
 ### Backend (.env.local)
-Required: `POLLINATIONS_API_KEY`; optional: `HF_TOKEN`
+Required: `POLLINATIONS_API_KEY`, `RENDER_SERVICE_TOKEN` (shared secret between lixsearch-app and render-service; if unset the render service refuses all requests and reports unhealthy); optional: `HF_TOKEN`
 Optional overrides: `REDIS_HOST`, `REDIS_PORT`, `QDRANT_MODE`, `QDRANT_URL`, `QDRANT_PATH`, `QDRANT_COLLECTION`, `IPC_HOST`, `IPC_PORT`, `WORKERS` (Hypercorn workers per container, default 10), `WORKER_PORT` (default 9002), `LOG_LEVEL`
 
 ### Frontend (wrangler.toml vars + secrets)
@@ -263,3 +269,11 @@ Secrets (via `wrangler secret put`): `INTERNAL_API_KEY`, `XID`, `API_KEY`, `SSO_
 ## Commit Rule
 
 - All commits use a single author: `Circuit-Overtime <ayushbhatt633@gmail.com>`. Do not add `Co-Authored-By` or any other attribution trailers.
+
+## Render service isolation
+
+`lixsearch/renderService/` (`APP_MODE=render`) renders hostile pages for the scrape API. Layers:
+1. **Network**: attached only to `render-network`; no route to redis/qdrant/ipc/nginx. No `env_file`, `cap_drop: ALL`, `no-new-privileges`.
+2. **Egress proxy** (`egress_proxy.py`): Chromium runs with `--proxy-server` (loopback not bypassed, non-proxied UDP and QUIC disabled). The proxy resolves each target itself, requires every address to be public, and connects to that validated IP (no DNS rebinding). Ports limited by `RENDER_PROXY_ALLOWED_PORTS`.
+3. **Host firewall**: `sudo ./deploy.sh firewall` (idempotent, `--dry-run` to preview) adds `OREO-RENDER-FWD` (DOCKER-USER) and `OREO-RENDER-IN` (INPUT) chains dropping render traffic to private/link-local/CGNAT/multicast ranges, the host, and non-DNS UDP. Not persistent across reboots.
+Config lives under `RENDER_*` in `pipeline/config.py`.

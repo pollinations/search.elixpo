@@ -29,6 +29,9 @@ from pipeline.config import (
     LLM_MODEL,
     LLM_MODEL_FALLBACK,
     POLLINATIONS_ENDPOINT,
+    RENDER_CLIENT_GRACE_SECONDS,
+    RENDER_SERVICE_TOKEN,
+    RENDER_SERVICE_URL,
     SCRAPE_BROWSER_FALLBACK,
     SCRAPE_DEFAULT_TIMEOUT_MS,
     SCRAPE_EXTRACT_MAX_CONTEXT_CHARS,
@@ -264,21 +267,41 @@ def http_fetch(url: str, timeout_seconds: float = SCRAPE_HTTP_TIMEOUT_SECONDS,
         session.close()
 
 
+def _post_render(payload: dict, timeout: float) -> tuple[int, Any]:
+    """POST to the isolated render-service. Returns (status, parsed JSON or None)."""
+    session = requests.Session()
+    session.trust_env = False  # internal call: never via environment proxies
+    try:
+        response = session.post(
+            f"{RENDER_SERVICE_URL}/render", json=payload, timeout=timeout,
+            headers={"X-Render-Token": RENDER_SERVICE_TOKEN},
+        )
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        return response.status_code, body
+    finally:
+        session.close()
+
+
 async def browser_render(url: str, timeout_ms: int, wait_for_ms: int, screenshot: bool,
                          full_page: bool = False) -> RawPage:
-    """Render through the shared Playwright pool in the ipc-service."""
-    from commons.main import _init_ipc_manager
-
-    if not await asyncio.to_thread(_init_ipc_manager):
+    """Render through the isolated render-service (Playwright behind an egress proxy)."""
+    if not RENDER_SERVICE_TOKEN:
+        logger.error("[Scrape] RENDER_SERVICE_TOKEN is not set; browser rendering disabled")
         raise ScrapeError("Browser rendering is unavailable", 503)
-    from ipcService.coreServiceManager import CoreServiceManager
-
-    manager = CoreServiceManager.get_instance()
-    result = await asyncio.to_thread(
-        manager.call, "agents", "browser_render", url,
-        timeout_ms=timeout_ms, wait_for_ms=wait_for_ms,
-        screenshot=screenshot, full_page=full_page,
-    )
+    payload = {"url": url, "timeout_ms": int(timeout_ms), "wait_for_ms": int(wait_for_ms),
+               "screenshot": bool(screenshot), "full_page": bool(full_page)}
+    timeout = (timeout_ms + wait_for_ms) / 1000 + RENDER_CLIENT_GRACE_SECONDS
+    try:
+        status, result = await asyncio.to_thread(_post_render, payload, timeout)
+    except requests.RequestException as exc:
+        logger.warning(f"[Scrape] Render service unreachable: {type(exc).__name__}")
+        raise ScrapeError("Browser rendering is unavailable", 503) from exc
+    if status != 200:
+        logger.warning(f"[Scrape] Render service returned HTTP {status}")
+        raise ScrapeError("Browser rendering is unavailable", 503)
     if not isinstance(result, dict) or result.get("error") or not result.get("html"):
         error = (result or {}).get("error") if isinstance(result, dict) else "no result"
         raise ScrapeError(f"Browser render failed: {error}")

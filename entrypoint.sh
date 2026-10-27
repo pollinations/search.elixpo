@@ -2,7 +2,7 @@
 set -e
 
 # LixSearch Entrypoint Script
-# Supports load_balancer, ipc, and worker modes
+# Supports load_balancer, ipc, monitor, render, and worker modes
 
 APP_MODE=${APP_MODE:-worker}
 WORKER_PORT=${WORKER_PORT:-9002}
@@ -28,6 +28,10 @@ elif [ "$APP_MODE" = "monitor" ]; then
     MONITOR_PORT=${MONITOR_PORT:-9520}
     echo "Starting Monitor Service on port $MONITOR_PORT..."
     exec python lixsearch/monitorService/main.py
+elif [ "$APP_MODE" = "render" ]; then
+    RENDER_PORT=${RENDER_PORT:-9520}
+    echo "Starting Render Service on port $RENDER_PORT..."
+    exec python lixsearch/renderService/main.py
 elif [ "$APP_MODE" = "worker" ]; then
     echo "Starting Worker $WORKER_ID on port $WORKER_PORT..."
     exec python lixsearch/app/main.py
