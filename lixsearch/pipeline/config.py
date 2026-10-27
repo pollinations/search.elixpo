@@ -343,3 +343,56 @@ IPC_PORT = int(os.getenv("IPC_PORT"))
 _IPC_AUTHKEY = os.getenv("IPC_AUTHKEY")
 IPC_AUTHKEY = _IPC_AUTHKEY.encode() if isinstance(_IPC_AUTHKEY, str) else _IPC_AUTHKEY
 IPC_TIMEOUT = 30
+
+
+def _env_flag(name: str, default: str) -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+# ---------------------------------------------------------------------------
+# Firecrawl-compatible scraping API (/v1/scrape, /v1/search, /v1/map,
+# /v1/crawl, /v1/batch/scrape, /v1/extract). All limits are env-overridable.
+# ---------------------------------------------------------------------------
+SCRAPE_DEFAULT_TIMEOUT_MS = int(os.getenv("SCRAPE_DEFAULT_TIMEOUT_MS", "30000"))
+SCRAPE_MAX_TIMEOUT_MS = int(os.getenv("SCRAPE_MAX_TIMEOUT_MS", "60000"))
+SCRAPE_MAX_WAIT_FOR_MS = int(os.getenv("SCRAPE_MAX_WAIT_FOR_MS", "10000"))
+SCRAPE_HTTP_TIMEOUT_SECONDS = float(os.getenv("SCRAPE_HTTP_TIMEOUT_SECONDS", "15"))
+SCRAPE_MAX_RESPONSE_BYTES = int(os.getenv("SCRAPE_MAX_RESPONSE_BYTES", str(5 * 1024 * 1024)))
+SCRAPE_MAX_REDIRECTS = int(os.getenv("SCRAPE_MAX_REDIRECTS", "5"))
+SCRAPE_MAX_MARKDOWN_CHARS = int(os.getenv("SCRAPE_MAX_MARKDOWN_CHARS", "200000"))
+SCRAPE_MAX_LINKS_PER_PAGE = int(os.getenv("SCRAPE_MAX_LINKS_PER_PAGE", "1000"))
+SCRAPE_MAX_URL_CHARS = int(os.getenv("SCRAPE_MAX_URL_CHARS", "2048"))
+SCRAPE_BROWSER_FALLBACK = _env_flag("SCRAPE_BROWSER_FALLBACK", "true")
+SCRAPE_SCREENSHOT_FULL_PAGE = _env_flag("SCRAPE_SCREENSHOT_FULL_PAGE", "false")
+# Public origin used for job status URLs; empty derives it from X-Forwarded-Proto + Host.
+SCRAPE_PUBLIC_BASE_URL = os.getenv("SCRAPE_PUBLIC_BASE_URL", "").rstrip("/")
+
+SCRAPE_SEARCH_DEFAULT_LIMIT = int(os.getenv("SCRAPE_SEARCH_DEFAULT_LIMIT", "5"))
+SCRAPE_SEARCH_MAX_LIMIT = int(os.getenv("SCRAPE_SEARCH_MAX_LIMIT", "20"))
+SCRAPE_SEARCH_CONCURRENCY = int(os.getenv("SCRAPE_SEARCH_CONCURRENCY", "5"))
+SCRAPE_SEARCH_TIMEOUT_SECONDS = float(os.getenv("SCRAPE_SEARCH_TIMEOUT_SECONDS", "60"))
+
+SCRAPE_MAP_DEFAULT_LIMIT = int(os.getenv("SCRAPE_MAP_DEFAULT_LIMIT", "100"))
+SCRAPE_MAP_MAX_LIMIT = int(os.getenv("SCRAPE_MAP_MAX_LIMIT", "5000"))
+SCRAPE_MAP_MAX_SITEMAPS = int(os.getenv("SCRAPE_MAP_MAX_SITEMAPS", "10"))
+
+SCRAPE_CRAWL_DEFAULT_LIMIT = int(os.getenv("SCRAPE_CRAWL_DEFAULT_LIMIT", "20"))
+SCRAPE_CRAWL_MAX_LIMIT = int(os.getenv("SCRAPE_CRAWL_MAX_LIMIT", "500"))
+SCRAPE_CRAWL_DEFAULT_MAX_DEPTH = int(os.getenv("SCRAPE_CRAWL_DEFAULT_MAX_DEPTH", "2"))
+SCRAPE_CRAWL_MAX_DEPTH = int(os.getenv("SCRAPE_CRAWL_MAX_DEPTH", "10"))
+SCRAPE_CRAWL_MAX_PATTERNS = int(os.getenv("SCRAPE_CRAWL_MAX_PATTERNS", "50"))
+SCRAPE_BATCH_MAX_URLS = int(os.getenv("SCRAPE_BATCH_MAX_URLS", "500"))
+
+SCRAPE_EXTRACT_MAX_URLS = int(os.getenv("SCRAPE_EXTRACT_MAX_URLS", "10"))
+SCRAPE_EXTRACT_MAX_CONTEXT_CHARS = int(os.getenv("SCRAPE_EXTRACT_MAX_CONTEXT_CHARS", "60000"))
+SCRAPE_EXTRACT_MAX_PROMPT_CHARS = int(os.getenv("SCRAPE_EXTRACT_MAX_PROMPT_CHARS", "4000"))
+SCRAPE_EXTRACT_TIMEOUT_SECONDS = float(os.getenv("SCRAPE_EXTRACT_TIMEOUT_SECONDS", "120"))
+
+# Async crawl/batch jobs live in Redis DB 6 (DBs 0-5 are already used) and
+# expire after 24h. Pages run with bounded concurrency in the app event loop.
+SCRAPE_JOB_REDIS_DB = int(os.getenv("SCRAPE_JOB_REDIS_DB", "6"))
+SCRAPE_JOB_KEY_PREFIX = os.getenv("SCRAPE_JOB_KEY_PREFIX", "elixpo:scrapejob")
+SCRAPE_JOB_TTL_SECONDS = int(os.getenv("SCRAPE_JOB_TTL_SECONDS", str(24 * 3600)))
+SCRAPE_JOB_PAGE_CONCURRENCY = int(os.getenv("SCRAPE_JOB_PAGE_CONCURRENCY", "4"))
+SCRAPE_MAX_ACTIVE_JOBS = int(os.getenv("SCRAPE_MAX_ACTIVE_JOBS", "4"))
+SCRAPE_JOB_STATUS_PAGE_SIZE = int(os.getenv("SCRAPE_JOB_STATUS_PAGE_SIZE", "100"))
