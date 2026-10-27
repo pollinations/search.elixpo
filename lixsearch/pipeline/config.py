@@ -84,12 +84,15 @@ LEAKED_XML_TAG_RE = re.compile(
 
 LLM_MODEL = os.getenv("LLM_MODEL", "nova-fast")
 LLM_MODEL_FALLBACK = os.getenv("LLM_MODEL_FALLBACK", "nova")
-# Decision model (routing, clarification resolution, query decomposition, tool
-# selection, deep-search classification). "jev" is opt-in: JEV_ENABLED=true makes
-# JEV_MODEL the decision model; a failed jev call falls back to LLM_MODEL.
+# Opt-in jev classifier (typesafe-ai/jev). jev is NOT a chat model: it answers typed
+# choice/noul questions, so it is used only as a fast first pass for classification
+# (request routing, deep-search gating). Generative calls (tool selection, query
+# decomposition) always use LLM_MODEL / LLM_MODEL_FALLBACK. Low confidence or any
+# error falls back to the LLM path.
 JEV_ENABLED = os.getenv("JEV_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 JEV_MODEL = os.getenv("JEV_MODEL", "jev")
-LLM_DECISION_MODEL = JEV_MODEL if JEV_ENABLED else os.getenv("LLM_DECISION_MODEL", LLM_MODEL)
+JEV_MIN_CONFIDENCE = float(os.getenv("JEV_MIN_CONFIDENCE", "0.6"))
+LLM_DECISION_MODEL = os.getenv("LLM_DECISION_MODEL", LLM_MODEL)
 # Upstream LLM timeouts (requests (connect, read) tuple). A short connect timeout
 # makes an unreachable provider fail fast instead of holding the stream open.
 LLM_CONNECT_TIMEOUT_SECONDS = float(os.getenv("LLM_CONNECT_TIMEOUT_SECONDS", "5"))
