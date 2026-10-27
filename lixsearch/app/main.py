@@ -218,7 +218,7 @@ class lixSearch:
                         "created": 1700000000,
                         "owned_by": "elixpo",
                     }
-                    for model_id in [RESPONSE_MODEL, *LEGACY_MODEL_ALIASES]
+                    for model_id in dict.fromkeys([RESPONSE_MODEL, *LEGACY_MODEL_ALIASES])
                 ],
             })
         self.app.route('/v1/models', methods=['GET'])(models_list)
