@@ -426,7 +426,7 @@ paths:
       operationId: listModels
       summary: List models
       description: |
-        Returns available models. Currently returns `lixsearch`.
+        Returns available models. Returns `oreolook` and the legacy alias `lixsearch`.
         Also available at `/v1/models` for OpenAI SDK compatibility.
       tags: [System]
       security: []
@@ -448,7 +448,7 @@ paths:
                       properties:
                         id:
                           type: string
-                          example: lixsearch
+                          example: oreolook
                         object:
                           type: string
                           const: model
@@ -616,8 +616,8 @@ components:
           description: Conversation messages. Last user message = search query.
         model:
           type: string
-          description: Ignored — always uses lixsearch
-          default: lixsearch
+          description: Ignored — always uses oreolook (legacy `lixsearch` accepted)
+          default: oreolook
         stream:
           type: boolean
           default: false
@@ -685,7 +685,7 @@ components:
           type: integer
         model:
           type: string
-          example: lixsearch
+          example: oreolook
         choices:
           type: array
           items:

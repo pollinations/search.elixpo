@@ -102,7 +102,9 @@ IMAGE_MODEL2 = os.getenv("IMAGE_MODEL2", "flux")
 VISION_MODEL = os.getenv("VISION_MODEL", "gemini-fast")
 
 
-RESPONSE_MODEL = os.getenv("RESPONSE_MODEL", "lixsearch")
+RESPONSE_MODEL = os.getenv("RESPONSE_MODEL", "oreolook")
+# Legacy model IDs still advertised in /v1/models; any requested ID is accepted.
+LEGACY_MODEL_ALIASES = [m.strip() for m in os.getenv("LEGACY_MODEL_ALIASES", "lixsearch").split(",") if m.strip()]
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "700"))
 LLM_MAX_TOKENS_DETAILED = int(os.getenv("LLM_MAX_TOKENS_DETAILED", "1800"))
 HISTORY_TOKEN_BUDGET = int(os.getenv("HISTORY_TOKEN_BUDGET", "3000"))
