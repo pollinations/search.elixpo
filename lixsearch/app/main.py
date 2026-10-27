@@ -208,16 +208,17 @@ class lixSearch:
         self.app.route('/v1/responses', methods=['POST'])(responses_wrapper)
 
         async def models_list():
-            from pipeline.config import RESPONSE_MODEL
+            from pipeline.config import RESPONSE_MODEL, LEGACY_MODEL_ALIASES
             return jsonify({
                 "object": "list",
                 "data": [
                     {
-                        "id": RESPONSE_MODEL,
+                        "id": model_id,
                         "object": "model",
                         "created": 1700000000,
                         "owned_by": "elixpo",
                     }
+                    for model_id in [RESPONSE_MODEL, *LEGACY_MODEL_ALIASES]
                 ],
             })
         self.app.route('/v1/models', methods=['GET'])(models_list)
