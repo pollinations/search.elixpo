@@ -188,6 +188,58 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ── Render Service — isolated Playwright for scrape screenshots/waitFor ─
+  # Runs hostile pages. Attached ONLY to render-network (no route to redis,
+  # qdrant, ipc or nginx), gets no env_file (no API keys), and every browser
+  # request leaves through the in-container egress proxy that pins connections
+  # to validated public IPs. `./deploy.sh firewall` adds host-level drops.
+  render-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    container_name: lixsearch-render
+    init: true
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - APP_MODE=render
+      - LOG_LEVEL=INFO
+      - RENDER_HOST=0.0.0.0
+      - RENDER_PORT=9520
+      - RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-}
+      - RENDER_MAX_CONCURRENCY=${RENDER_MAX_CONCURRENCY:-4}
+      - RENDER_PROXY_ALLOWED_PORTS=${RENDER_PROXY_ALLOWED_PORTS:-80,443}
+      - RENDER_PROXY_DENY_CIDRS=${RENDER_PROXY_DENY_CIDRS:-}
+    networks:
+      render-network:
+        ipv4_address: 172.31.250.10
+    expose:
+      - "9520"
+    restart: unless-stopped
+    shm_size: 1g
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9520/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Sized like ipc-service: one Chromium, RENDER_MAX_CONCURRENCY contexts.
+    mem_limit: 4g
+    memswap_limit: 4g
+    cpus: 2.0
+    pids_limit: 1024
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # ── Nginx — external entry point ─────────────────────────────────────
   nginx:
     image: nginx:stable-alpine
@@ -262,6 +314,8 @@ services:
       - POLLINATIONS_TOKEN_VALIDATION_TIMEOUT_SECONDS=${POLLINATIONS_TOKEN_VALIDATION_TIMEOUT_SECONDS:-3}
       - IMAGE_STORE_DIR=/app/data/cache/images
       - CONTENT_STORE_DIR=/app/data/cache/content
+      - RENDER_SERVICE_URL=http://render-service:9520
+      - RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-}
     volumes:
       - ./data/embeddings:/app/data/embeddings
       - ./data/cache:/app/data/cache
@@ -269,7 +323,9 @@ services:
       - ./data/logs:/app/logs
       - ./data/tmp-cache:/app/tmp/cache
     networks:
-      - elixpo-network
+      elixpo-network:
+        gw_priority: 1  # keep the default route (egress) on elixpo-network
+      render-network: {}
     expose:
       - "9002"
     restart: unless-stopped
@@ -366,3 +422,13 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
+  # Only lixsearch-app and render-service. Fixed subnet + bridge name so the
+  # host firewall rules from `./deploy.sh firewall` stay valid across deploys.
+  render-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br-oreo-render
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24
+          gateway: 172.31.250.1

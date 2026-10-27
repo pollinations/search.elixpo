@@ -728,6 +728,7 @@ parse_target_actions() {
             --qdrant)   SELECTED_SERVICES+=(qdrant) ;;
             --ipc)      SELECTED_SERVICES+=(ipc-service) ;;
             --app)      SELECTED_SERVICES+=(lixsearch-app) ;;
+            --render)   SELECTED_SERVICES+=(render-service) ;;
             --monitor)  SELECTED_SERVICES+=(monitor) ;;
             --nginx)    SELECTED_SERVICES+=(nginx) ;;
             --all)      SELECTED_SERVICES=() ;;
@@ -802,13 +803,13 @@ model_target() {
     local buildable=()
     local pullable=()
     if [ ${#SELECTED_SERVICES[@]} -eq 0 ]; then
-        buildable=(lixsearch-app ipc-service monitor)
+        buildable=(lixsearch-app ipc-service render-service monitor)
         pullable=(redis qdrant nginx)
     else
         local service
         for service in "${SELECTED_SERVICES[@]}"; do
             case "$service" in
-                lixsearch-app|ipc-service|monitor) buildable+=("$service") ;;
+                lixsearch-app|ipc-service|render-service|monitor) buildable+=("$service") ;;
                 redis|qdrant|nginx) pullable+=("$service") ;;
             esac
         done
@@ -896,6 +897,92 @@ mcp_target() {
     fi
 }
 
+# ── Render-network host firewall ──────────────────────
+# Defence in depth for render-service (which runs hostile pages): even if
+# Chromium escaped the egress proxy, the host drops anything it sends to
+# private, link-local/metadata, CGNAT, loopback or multicast space, any
+# non-DNS UDP (QUIC/WebRTC), and any new connection to the host itself. The
+# only private flow allowed is lixsearch-app -> render-service:9520 (+ replies).
+# Docker's embedded DNS (127.0.0.11) answers inside the container namespace, so
+# the subnet gateway needs no exception; the upstream resolver (Azure
+# 168.63.129.16, publicly numbered but host-internal) is allowed on port 53 only.
+RENDER_SUBNET="${RENDER_SUBNET:-172.31.250.0/24}"
+RENDER_IP="${RENDER_IP:-172.31.250.10}"
+RENDER_BRIDGE="${RENDER_BRIDGE:-br-oreo-render}"
+RENDER_DNS_UPSTREAM="${RENDER_DNS_UPSTREAM:-168.63.129.16}"
+RENDER_FW_CHAIN="OREO-RENDER-FWD"
+RENDER_FW_IN_CHAIN="OREO-RENDER-IN"
+
+_ipt() {
+    run_cmd iptables -w "$@"
+}
+
+_ipt_ensure_jump() {
+    # _ipt_ensure_jump <parent chain> <rule...>: insert at the top exactly once.
+    local parent="$1"; shift
+    if [ "$DRY_RUN" = "true" ]; then
+        printf '[dry-run] iptables -w -C %s' "$parent"; printf ' %q' "$@"; printf ' || '
+        printf 'iptables -w -I %s 1' "$parent"; printf ' %q' "$@"; printf '\n'
+        return
+    fi
+    iptables -w -C "$parent" "$@" 2>/dev/null || iptables -w -I "$parent" 1 "$@"
+}
+
+install_render_firewall() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --dry-run) DRY_RUN=true ;;
+            *) error "Unknown firewall option: $1"; exit 1 ;;
+        esac
+        shift
+    done
+    if [ "$DRY_RUN" != "true" ]; then
+        [ "$(id -u)" -eq 0 ] || { error "firewall needs root: sudo ./deploy.sh firewall"; exit 1; }
+        command -v iptables >/dev/null 2>&1 || { error "iptables not found"; exit 1; }
+        iptables -w -nL DOCKER-USER >/dev/null 2>&1 || {
+            error "DOCKER-USER chain missing: start Docker first"; exit 1; }
+    fi
+    info "Render firewall: subnet $RENDER_SUBNET, render $RENDER_IP, bridge $RENDER_BRIDGE"
+
+    # Intra-bridge (app <-> render) traffic only traverses iptables with br_netfilter.
+    run_cmd modprobe br_netfilter
+    run_cmd sysctl -q -w net.bridge.bridge-nf-call-iptables=1
+
+    local chain
+    for chain in "$RENDER_FW_CHAIN" "$RENDER_FW_IN_CHAIN"; do
+        if [ "$DRY_RUN" = "true" ]; then
+            echo "[dry-run] iptables -w -N $chain 2>/dev/null || true"
+        else
+            iptables -w -N "$chain" 2>/dev/null || true
+        fi
+        _ipt -F "$chain"
+    done
+
+    # Forwarded traffic from the render subnet (DOCKER-USER runs before Docker's ACCEPTs).
+    _ipt -A "$RENDER_FW_CHAIN" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+    _ipt -A "$RENDER_FW_CHAIN" ! -s "$RENDER_IP" -d "$RENDER_IP" -p tcp --dport 9520 -j RETURN
+    _ipt -A "$RENDER_FW_CHAIN" -d "$RENDER_DNS_UPSTREAM" -p udp --dport 53 -j RETURN
+    _ipt -A "$RENDER_FW_CHAIN" -d "$RENDER_DNS_UPSTREAM" -p tcp --dport 53 -j RETURN
+    _ipt -A "$RENDER_FW_CHAIN" -d "$RENDER_DNS_UPSTREAM" -j DROP
+    local cidr
+    for cidr in 169.254.0.0/16 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 127.0.0.0/8 224.0.0.0/4 240.0.0.0/4; do
+        _ipt -A "$RENDER_FW_CHAIN" -d "$cidr" -j DROP
+    done
+    _ipt -A "$RENDER_FW_CHAIN" -s "$RENDER_IP" -p udp ! --dport 53 -j DROP
+    _ipt -A "$RENDER_FW_CHAIN" -j RETURN
+    _ipt_ensure_jump DOCKER-USER -s "$RENDER_SUBNET" -j "$RENDER_FW_CHAIN"
+
+    # Traffic addressed to the host itself (gateway IP, host IPs, sshd, ...).
+    _ipt -A "$RENDER_FW_IN_CHAIN" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+    _ipt -A "$RENDER_FW_IN_CHAIN" -s "$RENDER_IP" -j DROP
+    _ipt -A "$RENDER_FW_IN_CHAIN" -j RETURN
+    _ipt_ensure_jump INPUT -i "$RENDER_BRIDGE" -j "$RENDER_FW_IN_CHAIN"
+
+    [ "$DRY_RUN" != "true" ] || { info "Dry run: no rules changed"; return; }
+    success "Render firewall installed (not persistent: re-run after reboot or save with netfilter-persistent)"
+    [ "$DRY_RUN" = "true" ] || iptables -w -nvL "$RENDER_FW_CHAIN" --line-numbers
+}
+
 show_help() {
     cat << EOF
 ${BLUE}lixSearch Production Deployment Helper${NC}
@@ -909,6 +996,7 @@ ${YELLOW}Target options:${NC}
   --quick             Validate and hot-copy model code without rebuilding images
   --graph             Include the optional FalkorDB + Graphiti worker profile
   --app | --ipc       Select app workers or the shared IPC service
+  --render            Select the isolated Playwright render service
   --redis | --qdrant  Select a state service (add --pull to refresh its image)
   --monitor | --nginx Select monitoring or edge proxy
   --all               Select the complete model stack (default)
@@ -934,6 +1022,7 @@ ${YELLOW}Commands:${NC}
   backup            Backup Redis data
   clean             Remove all data (volumes)
   test-scale        Test scalability (1→2→3→5 containers)
+  firewall [--dry-run]  Install host iptables rules isolating render-network (idempotent, root)
   release <sub>       Package release (run ./deploy.sh release for full help)
   frontend <sub>      Frontend (build | deploy | install-node)
   help              Show this help message
@@ -1077,6 +1166,10 @@ case "${1:-help}" in
         ;;
     test-scale)
         test_scaling
+        ;;
+    firewall)
+        shift
+        install_render_firewall "$@"
         ;;
     frontend)
         case "${2:-build}" in

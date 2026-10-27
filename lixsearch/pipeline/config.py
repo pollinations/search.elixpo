@@ -406,3 +406,35 @@ SCRAPE_JOB_STATUS_PAGE_SIZE = int(os.getenv("SCRAPE_JOB_STATUS_PAGE_SIZE", "100"
 # (e.g. its replica restarted) is reported and persisted as failed.
 SCRAPE_JOB_HEARTBEAT_SECONDS = int(os.getenv("SCRAPE_JOB_HEARTBEAT_SECONDS", "30"))
 SCRAPE_JOB_STALE_SECONDS = int(os.getenv("SCRAPE_JOB_STALE_SECONDS", "180"))
+
+# ---------------------------------------------------------------------------
+# Render service — isolated Playwright container used by the scrape API for
+# screenshots, waitFor and the blocked-page fallback. Every browser request
+# leaves through the in-container egress proxy, which pins connections to
+# validated public IPs.
+# ---------------------------------------------------------------------------
+RENDER_SERVICE_URL = os.getenv("RENDER_SERVICE_URL", "http://render-service:9520").rstrip("/")
+# Shared secret for X-Render-Token. Empty means the service refuses every render.
+RENDER_SERVICE_TOKEN = os.getenv("RENDER_SERVICE_TOKEN", "")
+RENDER_HOST = os.getenv("RENDER_HOST", "0.0.0.0")
+RENDER_PORT = int(os.getenv("RENDER_PORT", "9520"))
+RENDER_MAX_CONCURRENCY = int(os.getenv("RENDER_MAX_CONCURRENCY", "4"))
+# Extra seconds the client waits beyond the page timeout (queueing, screenshot encode).
+RENDER_CLIENT_GRACE_SECONDS = float(os.getenv("RENDER_CLIENT_GRACE_SECONDS", "15"))
+RENDER_MAX_REQUEST_BYTES = int(os.getenv("RENDER_MAX_REQUEST_BYTES", str(64 * 1024)))
+
+# Egress proxy (bound to 127.0.0.1 inside the render container). Port 0 = ephemeral.
+RENDER_PROXY_PORT = int(os.getenv("RENDER_PROXY_PORT", "0"))
+RENDER_PROXY_ALLOWED_PORTS = frozenset(
+    int(p) for p in os.getenv("RENDER_PROXY_ALLOWED_PORTS", "80,443").split(",") if p.strip()
+)
+# Extra CIDRs to refuse on top of the built-in private/reserved list, e.g. the
+# VPS's own public address so pages cannot loop back to nginx.
+RENDER_PROXY_DENY_CIDRS = tuple(
+    c.strip() for c in os.getenv("RENDER_PROXY_DENY_CIDRS", "").split(",") if c.strip()
+)
+RENDER_PROXY_MAX_CONNECTIONS = int(os.getenv("RENDER_PROXY_MAX_CONNECTIONS", "256"))
+RENDER_PROXY_HEADER_TIMEOUT_SECONDS = float(os.getenv("RENDER_PROXY_HEADER_TIMEOUT_SECONDS", "10"))
+RENDER_PROXY_CONNECT_TIMEOUT_SECONDS = float(os.getenv("RENDER_PROXY_CONNECT_TIMEOUT_SECONDS", "10"))
+RENDER_PROXY_IDLE_TIMEOUT_SECONDS = float(os.getenv("RENDER_PROXY_IDLE_TIMEOUT_SECONDS", "60"))
+RENDER_PROXY_MAX_TUNNEL_SECONDS = float(os.getenv("RENDER_PROXY_MAX_TUNNEL_SECONDS", "300"))
