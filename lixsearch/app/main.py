@@ -12,7 +12,7 @@ from sessions.main import get_session_manager
 from ragService.main import get_retrieval_system
 from chatEngine.main import initialize_chat_engine
 from commons.requestID import RequestIDMiddleware
-from app.gateways import health, search, session, stats, surf, completions, responses, image, export, content
+from app.gateways import health, search, session, stats, surf, completions, responses, image, export, content, firecrawl
 from app.auth import install_api_auth
 from mcpServer import build_mcp_server
 from mcpServer.asgi import MCPMount
@@ -274,7 +274,11 @@ class lixSearch:
         async def serve_content_wrapper(content_id):
             return await content.serve_content(content_id)
         self.app.route('/api/content/<content_id>', methods=['GET'])(serve_content_wrapper)
-    
+
+        # Firecrawl-compatible scraping API (/v1/scrape, /v1/search, /v1/map,
+        # /v1/crawl, /v1/batch/scrape, /v1/extract)
+        firecrawl.register(self.app)
+
     def _register_error_handlers(self):
         @self.app.errorhandler(404)
         async def not_found(error):
