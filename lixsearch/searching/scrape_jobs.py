@@ -20,9 +20,11 @@ from urllib.parse import urldefrag, urlparse
 from loguru import logger
 
 from pipeline.config import (
+    SCRAPE_JOB_HEARTBEAT_SECONDS,
     SCRAPE_JOB_KEY_PREFIX,
     SCRAPE_JOB_PAGE_CONCURRENCY,
     SCRAPE_JOB_REDIS_DB,
+    SCRAPE_JOB_STALE_SECONDS,
     SCRAPE_JOB_STATUS_PAGE_SIZE,
     SCRAPE_JOB_TTL_SECONDS,
     SCRAPE_MAX_ACTIVE_JOBS,
@@ -119,7 +121,7 @@ def _new_job(kind: str, extra: dict) -> str:
     now = time.time()
     get_store().create(job_id, {
         "kind": kind, "status": "scraping", "total": 0, "completed": 0,
-        "created_at": now, "expires_at": now + SCRAPE_JOB_TTL_SECONDS, "error": None, **extra,
+        "created_at": now, "heartbeat_at": now, "expires_at": now + SCRAPE_JOB_TTL_SECONDS, "error": None, **extra,
     })
     return job_id
 
@@ -155,8 +157,19 @@ def _path_allowed(url: str, include: list[str], exclude: list[str]) -> bool:
     return not include or any(re.search(p, path) for p in include)
 
 
+async def _heartbeat(job_id: str) -> None:
+    store = get_store()
+    while True:
+        await asyncio.sleep(SCRAPE_JOB_HEARTBEAT_SECONDS)
+        try:
+            store.update(job_id, heartbeat_at=time.time())
+        except Exception as exc:
+            logger.warning(f"[Scrape] Job {job_id} heartbeat failed: {exc}")
+
+
 async def _run_guarded(job_id: str, runner) -> None:
     store = get_store()
+    beat = asyncio.get_running_loop().create_task(_heartbeat(job_id))
     try:
         async with _job_slots():
             await runner()
@@ -171,6 +184,8 @@ async def _run_guarded(job_id: str, runner) -> None:
     except Exception as exc:
         logger.error(f"[Scrape] Job {job_id} failed: {type(exc).__name__}: {exc}")
         store.update(job_id, status="failed", error=str(exc)[:500])
+    finally:
+        beat.cancel()
 
 
 async def _crawl(job_id: str, start_url: str, limit: int, max_depth: int, include: list[str],
@@ -246,6 +261,13 @@ def start_batch(urls: list[str], options: ScrapeOptions) -> str:
     return job_id
 
 
+def _is_stale(meta: dict) -> bool:
+    last = meta.get("heartbeat_at")
+    if last is None:
+        last = meta.get("created_at", time.time())
+    return time.time() - last > SCRAPE_JOB_STALE_SECONDS
+
+
 def job_status(job_id: str, kind: str, *, skip: int = 0, next_base: Optional[str] = None) -> Optional[dict]:
     """Firecrawl-style status body, or None if the job does not exist / is another kind."""
     store = get_store()
@@ -255,6 +277,11 @@ def job_status(job_id: str, kind: str, *, skip: int = 0, next_base: Optional[str
     status = meta["status"]
     if status not in TERMINAL and store.is_cancelled(job_id):
         status = "cancelled"
+    elif status not in TERMINAL and _is_stale(meta):
+        status = "failed"
+        meta["error"] = "Job worker stopped responding"
+        store.update(job_id, status=status, error=meta["error"])
+        logger.warning(f"[Scrape] Job {job_id} marked failed: no heartbeat")
     stored = store.count(job_id)
     data = store.page(job_id, skip, SCRAPE_JOB_STATUS_PAGE_SIZE)
     body = {

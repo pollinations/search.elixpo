@@ -14,6 +14,7 @@ import asyncio
 import json
 import re
 import xml.etree.ElementTree as ET
+import zlib
 from dataclasses import dataclass, field
 from typing import Any, Optional
 from urllib.parse import urldefrag, urljoin, urlparse
@@ -22,7 +23,7 @@ import requests
 from bs4 import BeautifulSoup, Comment, Doctype, NavigableString, Tag
 from loguru import logger
 
-from commons.url_safety import UnsafeURLError, check_public_url
+from commons.url_safety import UnsafeURLError, check_public_url, guarded_session
 from pipeline.config import (
     LLM_HTTP_TIMEOUT,
     LLM_MODEL,
@@ -49,6 +50,7 @@ from searching.fetch_full_text import get_realistic_headers
 
 SIMPLE_FORMATS = ("markdown", "html", "rawHtml", "links", "screenshot")
 _HTML_TYPES = ("text/html", "application/xhtml+xml")
+_GZIP_TYPES = ("application/gzip", "application/x-gzip", "application/octet-stream")
 _TEXT_TYPES = ("text/plain", "text/markdown", "application/xml", "text/xml", "application/rss+xml", "application/atom+xml")
 _FALLBACK_STATUSES = {403, 429, 503}
 _CHARSET_RE = re.compile(rb"<meta[^>]+charset=[\"']?([A-Za-z0-9_\-]+)", re.I)
@@ -199,11 +201,25 @@ def _decode(body: bytes, content_type: str) -> str:
         return body.decode("utf-8", errors="replace")
 
 
+def _gunzip_limited(body: bytes) -> bytes:
+    """Inflate a gzip payload (e.g. sitemap.xml.gz) within the download limit."""
+    if body[:2] != b"\x1f\x8b":
+        return body
+    inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    try:
+        out = inflater.decompress(body, SCRAPE_MAX_RESPONSE_BYTES + 1)
+    except zlib.error as exc:
+        raise ScrapeError("Invalid gzip response body") from exc
+    if len(out) > SCRAPE_MAX_RESPONSE_BYTES or inflater.unconsumed_tail:
+        raise ScrapeError("Decompressed response exceeded the download limit", 413)
+    return out
+
+
 def http_fetch(url: str, timeout_seconds: float = SCRAPE_HTTP_TIMEOUT_SECONDS,
                allowed_types: tuple[str, ...] = _HTML_TYPES + _TEXT_TYPES) -> RawPage:
     """GET a public URL, re-validating every redirect hop against the SSRF guard."""
     current = check_public_url(url)
-    session = requests.Session()
+    session = guarded_session()
     response = None
     try:
         for hop in range(SCRAPE_MAX_REDIRECTS + 1):
@@ -212,6 +228,8 @@ def http_fetch(url: str, timeout_seconds: float = SCRAPE_HTTP_TIMEOUT_SECONDS,
             try:
                 response = session.get(current, headers=headers, timeout=timeout_seconds,
                                        allow_redirects=False, stream=True)
+            except UnsafeURLError:
+                raise
             except requests.exceptions.Timeout as exc:
                 raise ScrapeError(f"Timed out fetching {current}", 408) from exc
             except requests.exceptions.RequestException as exc:
@@ -233,10 +251,11 @@ def http_fetch(url: str, timeout_seconds: float = SCRAPE_HTTP_TIMEOUT_SECONDS,
             if size > SCRAPE_MAX_RESPONSE_BYTES:
                 raise ScrapeError("Response exceeded the download limit", 413)
             chunks.append(chunk)
+        body = _gunzip_limited(b"".join(chunks))
         return RawPage(
             url=current,
             status_code=response.status_code,
-            html=_decode(b"".join(chunks), content_type),
+            html=_decode(body, content_type),
             content_type=content_type or "text/html",
         )
     finally:
@@ -721,7 +740,7 @@ def _sitemap_urls(origin: str, limit: int) -> list[str]:
             continue
         visited.add(sitemap)
         try:
-            raw = http_fetch(sitemap, allowed_types=_TEXT_TYPES + _HTML_TYPES)
+            raw = http_fetch(sitemap, allowed_types=_TEXT_TYPES + _HTML_TYPES + _GZIP_TYPES)
         except (ScrapeError, UnsafeURLError):
             continue
         if raw.status_code != 200:

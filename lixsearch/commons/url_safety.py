@@ -73,6 +73,63 @@ def check_public_url(url: str, *, resolve_dns: bool = True, max_chars: int = 204
     return candidate
 
 
+def connect_public(host: str, port: int, timeout=None, source_address=None, socket_options=None):
+    """Resolve ``host`` and connect only to addresses that pass the public-IP check.
+
+    Validating at connect time closes the DNS-rebinding window between
+    ``check_public_url`` and the actual TCP connection.
+    """
+    from urllib3.util.connection import create_connection
+
+    addresses = resolve_host(host.strip("[]"), port)
+    if not addresses or not all(_ip_is_public(address) for address in addresses):
+        raise UnsafeURLError("URL resolves to a private or non-routable address")
+    last_error = None
+    for address in addresses:
+        try:
+            return create_connection((address, port), timeout=timeout,
+                                     source_address=source_address, socket_options=socket_options)
+        except OSError as exc:
+            last_error = exc
+    raise last_error
+
+
+def guarded_session():
+    """requests.Session whose connections are pinned to validated public addresses."""
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.connection import HTTPConnection, HTTPSConnection
+    from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
+
+    class _GuardedHTTPConnection(HTTPConnection):
+        def _new_conn(self):
+            return connect_public(self._dns_host, self.port, self.timeout,
+                                  self.source_address, self.socket_options)
+
+    class _GuardedHTTPSConnection(HTTPSConnection):
+        def _new_conn(self):
+            return connect_public(self._dns_host, self.port, self.timeout,
+                                  self.source_address, self.socket_options)
+
+    class _GuardedHTTPPool(HTTPConnectionPool):
+        ConnectionCls = _GuardedHTTPConnection
+
+    class _GuardedHTTPSPool(HTTPSConnectionPool):
+        ConnectionCls = _GuardedHTTPSConnection
+
+    class _GuardedAdapter(HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            super().init_poolmanager(*args, **kwargs)
+            self.poolmanager.pool_classes_by_scheme = {"http": _GuardedHTTPPool, "https": _GuardedHTTPSPool}
+
+    session = requests.Session()
+    session.trust_env = False  # never route user URLs through environment proxies
+    adapter = _GuardedAdapter()
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+
 def is_public_url(url: str, *, resolve_dns: bool = True) -> bool:
     try:
         check_public_url(url, resolve_dns=resolve_dns)
