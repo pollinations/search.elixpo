@@ -402,3 +402,7 @@ SCRAPE_JOB_TTL_SECONDS = int(os.getenv("SCRAPE_JOB_TTL_SECONDS", str(24 * 3600))
 SCRAPE_JOB_PAGE_CONCURRENCY = int(os.getenv("SCRAPE_JOB_PAGE_CONCURRENCY", "4"))
 SCRAPE_MAX_ACTIVE_JOBS = int(os.getenv("SCRAPE_MAX_ACTIVE_JOBS", "4"))
 SCRAPE_JOB_STATUS_PAGE_SIZE = int(os.getenv("SCRAPE_JOB_STATUS_PAGE_SIZE", "100"))
+# Running jobs refresh heartbeat_at; a job silent for longer than the stale window
+# (e.g. its replica restarted) is reported and persisted as failed.
+SCRAPE_JOB_HEARTBEAT_SECONDS = int(os.getenv("SCRAPE_JOB_HEARTBEAT_SECONDS", "30"))
+SCRAPE_JOB_STALE_SECONDS = int(os.getenv("SCRAPE_JOB_STALE_SECONDS", "180"))

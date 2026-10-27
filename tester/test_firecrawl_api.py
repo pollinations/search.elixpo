@@ -140,7 +140,7 @@ def mocked_world(monkeypatch):
         return DNS[hostname]
 
     monkeypatch.setattr(url_safety, "resolve_host", fake_resolve)
-    monkeypatch.setattr(scrape.requests, "Session", FakeSession)
+    monkeypatch.setattr(scrape, "guarded_session", FakeSession)
     FakeSession.calls = []
 
     async def fake_render(url, timeout_ms, wait_for_ms, screenshot, full_page=False):
@@ -502,3 +502,39 @@ async def test_batch_records_failed_pages_without_failing_job(client, monkeypatc
     assert status["status"] == "completed"
     failed = [d for d in status["data"] if d["metadata"].get("error")]
     assert len(failed) == 1 and "private" in failed[0]["metadata"]["error"]
+
+
+def test_connect_public_blocks_dns_rebinding(monkeypatch):
+    # The pre-check saw a public IP; at connect time the name now points inward.
+    monkeypatch.setattr(url_safety, "resolve_host", lambda host, port: {"10.0.0.5"})
+    with pytest.raises(UnsafeURLError):
+        url_safety.connect_public("rebind.test", 443, timeout=1)
+
+
+def test_gzip_sitemap_body_is_inflated():
+    import gzip
+    xml = b"<urlset><url><loc>https://a.test/x</loc></url></urlset>"
+    assert scrape._gunzip_limited(gzip.compress(xml)) == xml
+    assert scrape._gunzip_limited(xml) == xml
+
+
+def test_gzip_bomb_is_rejected():
+    import gzip
+    bomb = gzip.compress(b"\0" * (scrape.SCRAPE_MAX_RESPONSE_BYTES + 1))
+    with pytest.raises(scrape.ScrapeError):
+        scrape._gunzip_limited(bomb)
+
+
+def test_stale_job_is_reported_failed(monkeypatch):
+    job_id = scrape_jobs._new_job("crawl", {})
+    store = scrape_jobs.get_store()
+    store.update(job_id, heartbeat_at=0)
+    body = scrape_jobs.job_status(job_id, "crawl")
+    assert body["status"] == "failed"
+    assert "stopped responding" in body["error"]
+    assert store.get(job_id)["status"] == "failed"
+
+
+def test_live_job_is_not_stale():
+    job_id = scrape_jobs._new_job("crawl", {})
+    assert scrape_jobs.job_status(job_id, "crawl")["status"] == "scraping"
