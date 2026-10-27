@@ -364,8 +364,9 @@ SCRAPE_MAX_LINKS_PER_PAGE = int(os.getenv("SCRAPE_MAX_LINKS_PER_PAGE", "1000"))
 SCRAPE_MAX_URL_CHARS = int(os.getenv("SCRAPE_MAX_URL_CHARS", "2048"))
 SCRAPE_BROWSER_FALLBACK = _env_flag("SCRAPE_BROWSER_FALLBACK", "true")
 SCRAPE_SCREENSHOT_FULL_PAGE = _env_flag("SCRAPE_SCREENSHOT_FULL_PAGE", "false")
-# Public origin used for job status URLs; empty derives it from X-Forwarded-Proto + Host.
-SCRAPE_PUBLIC_BASE_URL = os.getenv("SCRAPE_PUBLIC_BASE_URL", "").rstrip("/")
+# Public origin used for crawl/batch job status URLs (falls back to PUBLIC_BASE_URL,
+# then to X-Forwarded-Proto + Host of the request when both are empty).
+SCRAPE_PUBLIC_BASE_URL = os.getenv("SCRAPE_PUBLIC_BASE_URL", os.getenv("PUBLIC_BASE_URL", "")).rstrip("/")
 
 SCRAPE_SEARCH_DEFAULT_LIMIT = int(os.getenv("SCRAPE_SEARCH_DEFAULT_LIMIT", "5"))
 SCRAPE_SEARCH_MAX_LIMIT = int(os.getenv("SCRAPE_SEARCH_MAX_LIMIT", "20"))
