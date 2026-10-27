@@ -1357,7 +1357,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             for tc in tool_calls:
                 fn_name = tc["function"]["name"]
                 logger.info(
-                    "[runtime] tool_selected=%s iteration=%s max_links=%s max_tokens=%s",
+                    "[runtime] tool_selected={} iteration={} max_links={} max_tokens={}",
                     fn_name, current_iteration, active_max_links, active_max_tokens,
                 )
                 if fn_name == "deep_research":
@@ -1562,7 +1562,7 @@ async def run_elixposearch_pipeline(user_query: str, user_image: str, event_id: 
             if usable_fetches:
                 force_synthesis = True
                 logger.info(
-                    "[runtime] synthesis_required reason=fetched_evidence sources=%s",
+                    "[runtime] synthesis_required reason=fetched_evidence sources={}",
                     len(usable_fetches),
                 )
                 if event_id:
