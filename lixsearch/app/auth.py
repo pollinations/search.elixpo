@@ -169,7 +169,7 @@ def install_api_auth(app) -> None:
         def _fail(message: str, status: int, error_type: str):
             if firecrawl:
                 return jsonify({"success": False, "error": message}), status
-            return _fail(message, status, error_type)
+            return _error(message, status, error_type)
 
         authorization = request.headers.get("Authorization", "")
         bearer = (
